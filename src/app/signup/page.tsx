@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { createUserWithEmailAndPassword, updateProfile } from 'firebase/auth';
 import { doc, setDoc } from 'firebase/firestore';
@@ -16,11 +16,14 @@ import { useToast } from "@/hooks/use-toast";
 const scholarNumberRegex = /^(\d{2})([UP])(0[1-3])(\d{3})$/;
 
 const getBranchName = (code: string): string => {
+  console.log("[getBranchName] Input code:", code);
   switch (code) {
     case '01': return 'ECE';
     case '02': return 'CSE';
     case '03': return 'IT';
-    default: return 'Unknown';
+    default: 
+      console.error("[getBranchName] Unknown branch code:", code);
+      return 'Unknown'; // Or potentially throw an error if this shouldn't happen
   }
 };
 
@@ -33,8 +36,9 @@ export default function SignupPage() {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [signupSuccess, setSignupSuccess] = useState(false);
   const router = useRouter();
-   const { toast } = useToast();
+  const { toast } = useToast();
 
   const handleSignup = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -42,37 +46,47 @@ export default function SignupPage() {
 
     if (password !== confirmPassword) {
       setError("Passwords do not match.");
-       toast({ variant: "destructive", title: "Signup Error", description: "Passwords do not match." });
+      toast({ variant: "destructive", title: "Signup Error", description: "Passwords do not match." });
       return;
     }
 
     const match = scholarNumber.match(scholarNumberRegex);
     if (!match) {
-      setError("Invalid Scholar Number format. Expected format: YY(U/P)XXZZZ (e.g., 22U01030).");
-        toast({ variant: "destructive", title: "Signup Error", description: "Invalid Scholar Number format." });
+      setError("Invalid Scholar Number format. Expected format: YY(U/P)XXZZZ.");
+      toast({ variant: "destructive", title: "Signup Error", description: "Invalid Scholar Number format." });
       return;
     }
 
     setLoading(true);
 
     try {
+      console.log("[handleSignup] Starting signup process...");
       // Create user in Firebase Auth
       const userCredential = await createUserWithEmailAndPassword(auth, email, password);
       const user = userCredential.user;
+      console.log("[handleSignup] Auth user created/retrieved:", user.uid);
 
-      // Update user profile (optional, Firebase Auth profile)
+      // Update user profile
       await updateProfile(user, { displayName: name });
+      console.log("[handleSignup] Profile updated with displayName:", name);
 
       // Extract data from scholar number
       const [, admissionYearStr, programType, branchCode, rollNumber] = match;
       const admissionYear = parseInt(`20${admissionYearStr}`, 10);
       const programDuration = programType === 'U' ? 4 : 2;
       const yearOfPassing = admissionYear + programDuration;
+      
+      // --- Debugging getBranchName --- 
+      console.log("[handleSignup] Determining branch from code:", branchCode);
       const branch = getBranchName(branchCode);
+      console.log("[handleSignup] Branch determined:", branch);
+      if (branch === 'Unknown') {
+        console.warn("[handleSignup] Branch resolved to 'Unknown'. Check getBranchName logic and input.");
+        // Consider if you want to stop signup here if branch is Unknown
+      }
+      // --- End Debugging getBranchName --- 
 
-      // Store user data in Firestore "students" collection
-      // Using scholarNumber as the document ID for easy lookup
-       // Also store a mapping from UID to scholar number for dashboard lookup
+      // Store user data in Firestore
       const studentData = {
         name: name,
         scholarNumber: scholarNumber,
@@ -82,37 +96,63 @@ export default function SignupPage() {
         yearOfPassing: yearOfPassing,
         programType: programType === 'U' ? 'Undergraduate' : 'Postgraduate',
         specialRoles: [],
-        uid: user.uid, // Store UID in the student document
+        uid: user.uid,
       };
+
+      // --- Debugging Firestore --- 
+      console.log("[handleSignup] Firestore instance (db):", db); // Check if db object exists
+      console.log("[handleSignup] Student data prepared:", JSON.stringify(studentData, null, 2));
+      console.log(`[handleSignup] Attempting to write to Firestore collection 'students' with ID: ${scholarNumber}`);
+      
       await setDoc(doc(db, 'students', scholarNumber), studentData);
-      await setDoc(doc(db, 'students-by-uid', user.uid), { scholarNumber: scholarNumber }); // UID -> Scholar Number mapping
+      console.log("[handleSignup] Successfully wrote to 'students' collection.");
 
+      console.log(`[handleSignup] Attempting to write to Firestore collection 'students-by-uid' with ID: ${user.uid}`);
+      await setDoc(doc(db, 'students-by-uid', user.uid), { scholarNumber: scholarNumber });
+      console.log("[handleSignup] Successfully wrote to 'students-by-uid' collection.");
+      // --- End Debugging Firestore --- 
 
+      // Show success toast
       toast({
-          title: "Signup Successful!",
-          description: "Your account has been created. Redirecting to login...",
+        title: "Signup Successful!",
+        description: "Your account has been created. Redirecting to login...",
       });
 
-      setLoading(false); // Reset loading state *after* success toast
-
-      // Redirect to login page after a short delay to allow toast visibility
-      setTimeout(() => {
-        router.push('/login');
-      }, 1500); // 1.5 second delay
-
+      // Set signup success to trigger redirect
+      setSignupSuccess(true);
+      // Keep loading true until redirect starts in useEffect
+      // setLoading(false); // We remove this so the button stays disabled until redirect
 
     } catch (error: any) {
-      console.error('Signup error:', error);
-      setError(error.message || "An unexpected error occurred during signup.");
+      console.error('Signup error during Firestore write or earlier:', error);
+      // Check if the error is specifically a Firestore permission error
+      if (error.code === 'permission-denied') {
+         setError("Firestore permission denied. Check your security rules.");
+         toast({ variant: "destructive", title: "Signup Failed", description: "Database permission error. Contact support." });
+      } else {
+        setError(error.message || "An unexpected error occurred during signup.");
         toast({
           variant: "destructive",
           title: "Signup Failed",
           description: error.message || "An unexpected error occurred.",
-       });
-       setLoading(false); // Stop loading on error
+        });
+      }
+      setLoading(false); // Stop loading only on error
     }
-    // setLoading(false) is now handled within try/catch blocks
   };
+
+  // Handle redirect after successful signup
+  useEffect(() => {
+    if (signupSuccess) {
+      console.log("[useEffect] Signup success detected, preparing redirect...");
+      // Wait for 1.5 seconds to allow toast visibility, then redirect
+      const timer = setTimeout(() => {
+        console.log("[useEffect] Redirecting to /login");
+        router.push('/login');
+      }, 1500);
+      return () => clearTimeout(timer); // Cleanup timer on unmount
+    }
+  }, [signupSuccess, router]);
 
   return (
     <div className="flex items-center justify-center min-h-screen bg-secondary">
@@ -124,20 +164,19 @@ export default function SignupPage() {
         <CardContent>
           <form onSubmit={handleSignup} className="space-y-3">
             {error && <p className="text-red-500 text-sm text-center">{error}</p>}
-             <div className="space-y-1">
+            <div className="space-y-1">
               <Label htmlFor="scholarNumber">Scholar Number</Label>
               <Input
                 id="scholarNumber"
                 type="text"
-                placeholder="e.g., 22U01030"
                 value={scholarNumber}
-                onChange={(e) => setScholarNumber(e.target.value.toUpperCase())} // Ensure U/P are uppercase
+                onChange={(e) => setScholarNumber(e.target.value.toUpperCase())}
                 required
-                pattern="\d{2}[UP](0[1-3])\d{3}" // Basic pattern validation on input
-                title="Format: YY(U/P)XXZZZ (e.g., 22U01030)"
+                pattern="\d{2}[UP](0[1-3])\d{3}"
+                title="Format: YY(U/P)XXZZZ"
                 disabled={loading}
               />
-               <p className="text-xs text-muted-foreground">Format: YY(U/P)XXZZZ (e.g., 22U01030)</p>
+              <p className="text-xs text-muted-foreground">Format: YY(U/P)XXZZZ</p>
             </div>
             <div className="space-y-1">
               <Label htmlFor="name">Name</Label>
@@ -151,7 +190,6 @@ export default function SignupPage() {
                 disabled={loading}
               />
             </div>
-
             <div className="space-y-1">
               <Label htmlFor="email">Email</Label>
               <Input
@@ -164,7 +202,7 @@ export default function SignupPage() {
                 disabled={loading}
               />
             </div>
-             <div className="space-y-1">
+            <div className="space-y-1">
               <Label htmlFor="phoneNumber">Phone Number</Label>
               <Input
                 id="phoneNumber"
@@ -173,7 +211,7 @@ export default function SignupPage() {
                 value={phoneNumber}
                 onChange={(e) => setPhoneNumber(e.target.value)}
                 required
-                 disabled={loading}
+                disabled={loading}
               />
             </div>
             <div className="space-y-1">
@@ -184,8 +222,8 @@ export default function SignupPage() {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 required
-                minLength={6} // Firebase requires at least 6 characters
-                 disabled={loading}
+                minLength={6}
+                disabled={loading}
               />
             </div>
             <div className="space-y-1">
@@ -196,7 +234,7 @@ export default function SignupPage() {
                 value={confirmPassword}
                 onChange={(e) => setConfirmPassword(e.target.value)}
                 required
-                 disabled={loading}
+                disabled={loading}
               />
             </div>
             <Button type="submit" className="w-full" disabled={loading}>
