@@ -17,13 +17,15 @@ import LostAndFoundFeed from './lost-found-feed';
 import EventsFeed from './events-feed';
 import UserPosts from './user-posts';
 import UserEvents from './user-events';
-import LoadingSpinner from '@/components/loading-spinner'; // Import LoadingSpinner
+import LoadingSpinner from '@/components/loading-spinner';
+import type { Student } from '@/types'; // Import Student type
 
-type StudentData = {
-    name: string;
-    scholarNumber: string;
-    // Add other fields as needed
-};
+// Remove StudentData type definition as we'll use the imported Student type
+// type StudentData = {
+//     name: string;
+//     scholarNumber: string;
+//     // Add other fields as needed
+// };
 
 const getGreeting = () => {
   const hour = new Date().getHours();
@@ -33,6 +35,7 @@ const getGreeting = () => {
 };
 
 const getInitials = (name: string = '') => {
+  if (!name) return 'G'; // G for Guest or if name is empty
   return name
     .split(' ')
     .map((n) => n[0])
@@ -43,7 +46,7 @@ const getInitials = (name: string = '') => {
 
 export default function Dashboard() {
   const { user } = useAuth();
-  const [studentData, setStudentData] = useState<StudentData | null>(null);
+  const [studentData, setStudentData] = useState<Student | null>(null); // Use Student type
   const [activeSection, setActiveSection] = useState('home'); // home, posts, lost-found, events, your-posts, your-events
   const [loadingData, setLoadingData] = useState(true);
   const router = useRouter();
@@ -51,40 +54,110 @@ export default function Dashboard() {
 
   useEffect(() => {
     const fetchStudentData = async () => {
-      if (user && user.email !== 'guest@example.com') { // Don't fetch for guest
+      if (user && user.email !== 'guest@iiitbhopal.ac.in') { // Use correct guest email
+        setLoadingData(true); // Start loading when fetching
         try {
-          // Fetch student data using UID from the 'students-by-uid' collection
-          // This assumes you have a Firestore collection named 'students-by-uid'
-          // where the document ID is the user's UID.
-          const userDocRef = doc(db, 'students-by-uid', user.uid);
-          const docSnap = await getDoc(userDocRef);
+          // 1. Get scholar number from UID mapping
+          const uidMapRef = doc(db, 'students-by-uid', user.uid);
+          const uidMapSnap = await getDoc(uidMapRef);
 
-          if (docSnap.exists()) {
-             setStudentData(docSnap.data() as StudentData);
+          if (uidMapSnap.exists()) {
+            const scholarNumber = uidMapSnap.data()?.scholarNumber;
+
+            if (scholarNumber) {
+              // 2. Fetch full student data using scholar number
+              const studentDocRef = doc(db, 'students', scholarNumber);
+              const studentDocSnap = await getDoc(studentDocRef);
+
+              if (studentDocSnap.exists()) {
+                 setStudentData(studentDocSnap.data() as Student);
+              } else {
+                console.log("No student document found for scholar number:", scholarNumber);
+                 // Fallback to Auth display name if Firestore doc doesn't exist
+                 setStudentData({
+                    name: user.displayName || "Student",
+                    scholarNumber: "N/A", // Indicate missing data
+                    email: user.email || "N/A",
+                    // Provide defaults for other required Student fields
+                    branch: 'Unknown',
+                    yearOfPassing: 0,
+                    programType: 'Undergraduate',
+                    specialRoles: [],
+                    phoneNumber: '',
+                    uid: user.uid,
+                 } as Student);
+              }
+            } else {
+                console.log("Scholar number not found in UID map for user:", user.uid);
+                // Handle case where UID map exists but scholar number is missing
+                 setStudentData({
+                    name: user.displayName || "Student",
+                    scholarNumber: "N/A",
+                    email: user.email || "N/A",
+                    branch: 'Unknown',
+                    yearOfPassing: 0,
+                    programType: 'Undergraduate',
+                    specialRoles: [],
+                    phoneNumber: '',
+                    uid: user.uid,
+                 } as Student);
+            }
+
           } else {
-            console.log("No student document found for user:", user.uid);
-             // Fallback to Auth display name if Firestore doc doesn't exist
-             setStudentData({ name: user.displayName || "Student", scholarNumber: "N/A" });
+            console.log("No UID map document found for user:", user.uid);
+             // Fallback if UID map doesn't exist
+              setStudentData({
+                name: user.displayName || "Student",
+                scholarNumber: "N/A",
+                email: user.email || "N/A",
+                branch: 'Unknown',
+                yearOfPassing: 0,
+                programType: 'Undergraduate',
+                specialRoles: [],
+                phoneNumber: '',
+                uid: user.uid,
+              } as Student);
           }
         } catch (error) {
           console.error("Error fetching student data:", error);
            // Fallback in case of error
-           setStudentData({ name: user.displayName || "Student", scholarNumber: "N/A" });
+            setStudentData({
+                name: user.displayName || "Student",
+                scholarNumber: "N/A",
+                email: user.email || "N/A",
+                branch: 'Unknown',
+                yearOfPassing: 0,
+                programType: 'Undergraduate',
+                specialRoles: [],
+                phoneNumber: '',
+                uid: user.uid,
+            } as Student);
         } finally {
           setLoadingData(false);
         }
-      } else if (user && user.email === 'guest@example.com') {
+      } else if (user && user.email === 'guest@iiitbhopal.ac.in') { // Use correct guest email
          // Handle guest user
-         setStudentData({ name: "Guest", scholarNumber: "guest" });
+         setStudentData({
+             name: "Guest",
+             scholarNumber: "guest",
+             email: "guest@iiitbhopal.ac.in",
+             branch: 'Unknown',
+             yearOfPassing: 0,
+             programType: 'Undergraduate',
+             specialRoles: [],
+             phoneNumber: '',
+             uid: user.uid,
+            } as Student);
          setLoadingData(false);
       } else {
          // No user logged in or still loading auth state
+         setStudentData(null); // Clear data if no user
          setLoadingData(false);
       }
     };
 
     fetchStudentData();
-  }, [user]);
+  }, [user]); // Rerun when user object changes
 
 
   const handleLogout = async () => {
@@ -99,21 +172,24 @@ export default function Dashboard() {
   };
 
   const renderContent = () => {
+    // Pass student data to components that need it
+    const commonProps = { user, studentData };
+
     switch (activeSection) {
       case 'home':
-        return <PostsFeed />; // Default to posts feed on home
+        return <PostsFeed {...commonProps} />;
       case 'posts':
-         return <PostsFeed />;
+         return <PostsFeed {...commonProps} />;
       case 'lost-found':
-        return <LostAndFoundFeed />;
+        return <LostAndFoundFeed {...commonProps} />;
       case 'events':
-         return <EventsFeed />;
+         return <EventsFeed {...commonProps} />;
       case 'your-posts':
-        return <UserPosts />;
+        return <UserPosts {...commonProps} />;
       case 'your-events':
-         return <UserEvents />;
+         return <UserEvents {...commonProps} />;
       default:
-        return <PostsFeed />;
+        return <PostsFeed {...commonProps} />;
     }
   };
 
@@ -201,9 +277,14 @@ export default function Dashboard() {
                 <h1 className="text-lg font-semibold">{greeting}</h1>
                 {/* Optionally add other header elements here */}
             </div>
-            {/* <div className="flex items-center gap-2">
-                 <SidebarTrigger className="hidden sm:flex" /> Add trigger for large screens if needed
-            </div> */}
+            {/* Sidebar trigger on large screens (if needed) */}
+             <div className="sm:hidden"> {/* Only show trigger button on small screens if sidebar is collapsed initially */}
+               {/* <SidebarTrigger /> */}
+             </div>
+             {/* Optionally add a trigger for large screens if design requires it */}
+             {/* <div className="hidden sm:flex items-center gap-2">
+                <SidebarTrigger />
+             </div> */}
          </header>
         <main className="flex-1 p-4 md:p-6 lg:p-8 overflow-auto">
            {loadingData ? <LoadingSpinner /> : renderContent()}
@@ -212,3 +293,5 @@ export default function Dashboard() {
     </SidebarProvider>
   );
 }
+
+    

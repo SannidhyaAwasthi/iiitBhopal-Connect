@@ -72,7 +72,8 @@ export default function SignupPage() {
 
       // Store user data in Firestore "students" collection
       // Using scholarNumber as the document ID for easy lookup
-      await setDoc(doc(db, 'students', scholarNumber), {
+       // Also store a mapping from UID to scholar number for dashboard lookup
+      const studentData = {
         name: name,
         scholarNumber: scholarNumber,
         email: email,
@@ -80,13 +81,23 @@ export default function SignupPage() {
         branch: branch,
         yearOfPassing: yearOfPassing,
         programType: programType === 'U' ? 'Undergraduate' : 'Postgraduate',
-        // Add default fields if needed
-        specialRoles: [], // e.g., 'CR', 'Admin'
-        // section: 'A', // Example, adjust as needed
+        specialRoles: [],
+        uid: user.uid, // Store UID in the student document
+      };
+      await setDoc(doc(db, 'students', scholarNumber), studentData);
+      await setDoc(doc(db, 'students-by-uid', user.uid), { scholarNumber: scholarNumber }); // UID -> Scholar Number mapping
+
+
+      toast({
+          title: "Signup Successful!",
+          description: "Your account has been created. Redirecting to login...",
       });
 
-      toast({ title: "Signup Successful", description: "Your account has been created." });
-      router.push('/'); // Redirect to homepage after successful signup
+      // Redirect to login page after a short delay to allow toast visibility
+      setTimeout(() => {
+        router.push('/login');
+      }, 1500); // 1.5 second delay
+
 
     } catch (error: any) {
       console.error('Signup error:', error);
@@ -96,9 +107,11 @@ export default function SignupPage() {
           title: "Signup Failed",
           description: error.message || "An unexpected error occurred.",
        });
-    } finally {
-      setLoading(false);
+       setLoading(false); // Stop loading on error
     }
+    // No finally block needed here as redirection handles unmounting.
+    // If redirection fails or is delayed significantly, setLoading(false) after router.push could be added,
+    // but typically the component unmounts. setLoading(false) is crucial in the catch block.
   };
 
   return (
@@ -201,3 +214,5 @@ export default function SignupPage() {
     </div>
   );
 }
+
+    

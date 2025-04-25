@@ -40,7 +40,7 @@ export default function LoginPage() {
    const handleGuestLogin = async () => {
     setLoading(true);
     try {
-      await signInWithEmailAndPassword(auth, 'guest@example.com', 'guestpassword'); // Use secure guest credentials
+      await signInWithEmailAndPassword(auth, 'guest@iiitbhopal.ac.in', 'guest@123'); // Use secure guest credentials
       toast({ title: "Guest Login Successful", description: "Logged in as Guest." });
       router.push('/');
     } catch (error: any) {
