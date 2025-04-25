@@ -3,7 +3,7 @@ import { useState } from 'react';
 import type { LostAndFoundItem, StudentProfile } from '@/types';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
-import { Clock, MapPin, User as UserIcon, Info } from 'lucide-react';
+import { Clock, MapPin, User as UserIcon, Info, CheckSquare, Loader2 } from 'lucide-react'; // Added CheckSquare, Loader2
 import { formatDistanceToNow } from 'date-fns';
 import { useToast } from '@/hooks/use-toast';
 import { reportItemAsFound } from '@/lib/lostAndFoundActions';
@@ -19,7 +19,7 @@ import {
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import type { User } from 'firebase/auth';
-import LoadingSpinner from './loading-spinner'; // Import LoadingSpinner
+// Removed LoadingSpinner import as Loader2 is used inline
 
 interface LostItemCardProps {
     item: LostAndFoundItem;
@@ -33,30 +33,37 @@ export const LostItemCard: FC<LostItemCardProps> = ({ item, currentUser, current
     const { toast } = useToast();
 
     const handleReportFound = async () => {
+         console.log("[LostItemCard] handleReportFound triggered for item:", item.id);
+        // Explicitly check for null/undefined profile *before* proceeding
         if (!currentUser || !currentStudentProfile) {
-            toast({ variant: "destructive", title: "Action Failed", description: "You must be logged in to report an item as found." });
+            console.error("[LostItemCard] Cannot report found: User or profile missing.");
+            toast({ variant: "destructive", title: "Action Failed", description: "You must be logged in with a loaded profile to report an item as found." });
             return;
         }
+        // Check if the current user is the original reporter
         if (currentUser.uid === item.reporterId) {
+            console.warn("[LostItemCard] User attempting to report their own lost item as found:", currentUser.uid);
             toast({ variant: "destructive", title: "Action Failed", description: "You cannot report your own lost item as found." });
             return;
         }
 
-
         setIsReportingFound(true);
         try {
+            console.log("[LostItemCard] Calling reportItemAsFound with item:", item, "and finder profile:", currentStudentProfile);
+            // Pass the *current* student profile (the finder)
             await reportItemAsFound(item, currentStudentProfile);
-            toast({ title: "Item Reported as Found", description: "A new 'found' post has been created." });
+            toast({ title: "Item Reported as Found", description: "A new 'found' post has been created. Refreshing list..." });
             onItemFoundReported(); // Trigger refresh in the parent component
         } catch (error: any) {
-            console.error("Error reporting item as found:", error);
+            console.error("[LostItemCard] Error reporting item as found:", error);
             toast({
                 variant: "destructive",
                 title: "Report Failed",
                 description: error.message || "Could not report the item as found.",
             });
         } finally {
-            setIsReportingFound(false);
+            // Ensure loading state is always reset, even if the dialog closes immediately
+             setIsReportingFound(false);
         }
     };
 
@@ -87,11 +94,12 @@ export const LostItemCard: FC<LostItemCardProps> = ({ item, currentUser, current
                 </div>
             </CardContent>
             <CardFooter className="border-t pt-4">
-                 {currentUser && currentUser.uid !== item.reporterId && ( // Only show button if not the reporter
+                 {currentUser && currentStudentProfile && currentUser.uid !== item.reporterId && ( // Only show if logged in, profile exists, and not the reporter
                     <AlertDialog>
                         <AlertDialogTrigger asChild>
                             <Button size="sm" className="w-full" disabled={isReportingFound}>
-                                {isReportingFound ? <LoadingSpinner /> : "I Found This Item"}
+                                {isReportingFound ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <CheckSquare className="mr-2 h-4 w-4" />}
+                                {isReportingFound ? "Reporting..." : "I Found This Item"}
                             </Button>
                         </AlertDialogTrigger>
                         <AlertDialogContent>
@@ -99,6 +107,7 @@ export const LostItemCard: FC<LostItemCardProps> = ({ item, currentUser, current
                                 <AlertDialogTitle>Report as Found?</AlertDialogTitle>
                                 <AlertDialogDescription>
                                     This will create a new "Found Item" post based on this lost item report.
+                                    Your details will be used as the reporter for the new post.
                                     Are you sure you found this specific item?
                                 </AlertDialogDescription>
                             </AlertDialogHeader>
@@ -111,11 +120,14 @@ export const LostItemCard: FC<LostItemCardProps> = ({ item, currentUser, current
                         </AlertDialogContent>
                     </AlertDialog>
                  )}
-                 {currentUser && currentUser.uid === item.reporterId && (
-                     <p className="text-xs text-muted-foreground italic text-center w-full">You reported this item.</p>
+                 {currentUser && currentStudentProfile && currentUser.uid === item.reporterId && (
+                     <p className="text-xs text-muted-foreground italic text-center w-full">You reported this item lost.</p>
                  )}
-                  {!currentUser && (
+                 {!currentUser && (
                      <p className="text-xs text-muted-foreground italic text-center w-full">Login to report if found.</p>
+                 )}
+                 {currentUser && !currentStudentProfile && ( // Edge case: User logged in but profile hasn't loaded yet
+                      <p className="text-xs text-muted-foreground italic text-center w-full">Loading profile...</p>
                  )}
             </CardFooter>
         </Card>
