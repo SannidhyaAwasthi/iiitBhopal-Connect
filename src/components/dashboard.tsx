@@ -5,21 +5,21 @@ import { useAuth } from '@/hooks/use-auth';
 import { doc, getDoc } from 'firebase/firestore';
 import { db } from '@/config/firebase';
 import { SidebarProvider, Sidebar, SidebarHeader, SidebarContent, SidebarFooter, SidebarTrigger, SidebarInset, SidebarMenu, SidebarMenuItem, SidebarMenuButton } from '@/components/ui/sidebar';
-import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
-import { Home, FileText, Search, Calendar, Star, LogOut, Settings, User } from 'lucide-react'; // Removed PlusCircle
+import { Home, FileText, Search, Calendar, Star, LogOut, User as UserIcon } from 'lucide-react'; // Renamed User to UserIcon
 import { signOut } from 'firebase/auth';
 import { auth } from '@/config/firebase';
 import { useRouter } from 'next/navigation';
 import { useToast } from '@/hooks/use-toast';
-import PostsFeed from './posts-feed'; // Keep this
+import PostsFeed from './posts-feed';
 import LostAndFoundFeed from './lost-found-feed';
 import EventsFeed from './events-feed';
-import UserPosts from './user-posts';
-import UserEvents from './user-events';
+import UserPosts from './user-posts'; // This will render the user's specific posts
+import UserEvents from './user-events'; // This will render the user's specific events
 import LoadingSpinner from '@/components/loading-spinner';
-import type { Student, StudentProfile } from '@/types'; // Import StudentProfile
-import { CreatePostForm } from './CreatePostForm'; // Keep this import
+import type { StudentProfile } from '@/types'; // Import StudentProfile
+import { CreatePostForm } from './CreatePostForm';
 
 const getGreeting = () => {
   const hour = new Date().getHours();
@@ -29,7 +29,7 @@ const getGreeting = () => {
 };
 
 const getInitials = (name: string = '') => {
-  if (!name) return 'G'; // G for Guest or if name is empty
+  if (!name) return 'G';
   return name
     .split(' ')
     .map((n) => n[0])
@@ -40,9 +40,8 @@ const getInitials = (name: string = '') => {
 
 export default function Dashboard() {
   const { user } = useAuth();
-  const [studentData, setStudentData] = useState<StudentProfile | null>(null); // Use StudentProfile
-  // Default active section changed to 'posts'
-  const [activeSection, setActiveSection] = useState('posts'); // home, posts, lost-found, events, your-posts, your-events, create-post
+  const [studentData, setStudentData] = useState<StudentProfile | null>(null);
+  const [activeSection, setActiveSection] = useState('posts'); // Default to 'posts'
   const [loadingData, setLoadingData] = useState(true);
   const router = useRouter();
   const { toast } = useToast();
@@ -52,7 +51,6 @@ export default function Dashboard() {
       if (user) {
         setLoadingData(true);
         try {
-          // Handle guest user explicitly first
           if (user.email === 'guest@iiitbhopal.ac.in') {
              setStudentData({
                  name: "Guest",
@@ -64,12 +62,11 @@ export default function Dashboard() {
                  specialRoles: [],
                  phoneNumber: '',
                  uid: user.uid,
-                 gender: 'Prefer not to say', // Gender is guaranteed by StudentProfile
+                 gender: 'Prefer not to say',
              });
-             return; // Exit early for guest
+             return;
           }
 
-          // Proceed for non-guest users
           const uidMapRef = doc(db, 'students-by-uid', user.uid);
           const uidMapSnap = await getDoc(uidMapRef);
 
@@ -81,11 +78,9 @@ export default function Dashboard() {
               const studentDocSnap = await getDoc(studentDocRef);
 
               if (studentDocSnap.exists()) {
-                 // Ensure gender is always set, defaulting to 'Unknown' if missing
-                 const fetchedData = studentDocSnap.data() as Omit<Student, 'gender'> & { gender?: Student['gender'] };
+                 const fetchedData = studentDocSnap.data() as Omit<StudentProfile, 'gender'> & { gender?: StudentProfile['gender'] };
                  setStudentData({
                      ...fetchedData,
-                     // Ensure required fields exist, providing defaults if necessary
                      name: fetchedData.name || user.displayName || "Student",
                      scholarNumber: fetchedData.scholarNumber || "N/A",
                      email: fetchedData.email || user.email || "N/A",
@@ -94,15 +89,14 @@ export default function Dashboard() {
                      programType: fetchedData.programType || 'Undergraduate',
                      specialRoles: fetchedData.specialRoles || [],
                      phoneNumber: fetchedData.phoneNumber || '',
-                     uid: fetchedData.uid || user.uid, // Ensure UID is present
-                     gender: fetchedData.gender || 'Unknown', // Provide default if undefined
+                     uid: fetchedData.uid || user.uid,
+                     gender: fetchedData.gender || 'Unknown',
                  });
               } else {
                  console.warn("No student document found for scholar number:", scholarNumber);
-                 // Fallback to Auth display name if Firestore doc doesn't exist
                  setStudentData({
                     name: user.displayName || "Student",
-                    scholarNumber: "N/A", // Indicate missing data
+                    scholarNumber: "N/A",
                     email: user.email || "N/A",
                     branch: 'Unknown',
                     yearOfPassing: 0,
@@ -130,7 +124,6 @@ export default function Dashboard() {
             }
           } else {
              console.warn("No UID map document found for user:", user.uid);
-             // Fallback if UID map doesn't exist
               setStudentData({
                 name: user.displayName || "Student",
                 scholarNumber: "N/A",
@@ -146,7 +139,6 @@ export default function Dashboard() {
           }
         } catch (error) {
           console.error("Error fetching student data:", error);
-           // Fallback in case of error
             setStudentData({
                 name: user.displayName || "Student",
                 scholarNumber: "N/A",
@@ -164,14 +156,13 @@ export default function Dashboard() {
           setLoadingData(false);
         }
       } else {
-         // No user logged in or still loading auth state
-         setStudentData(null); // Clear data if no user
+         setStudentData(null);
          setLoadingData(false);
       }
     };
 
     fetchStudentData();
-  }, [user, toast]); // Rerun when user object changes
+  }, [user, toast]);
 
 
   const handleLogout = async () => {
@@ -185,18 +176,14 @@ export default function Dashboard() {
     }
   };
 
-  // Disable create post/event/lost&found for guest user
-   const isGuest = user?.email === 'guest@iiitbhopal.ac.in' || studentData?.scholarNumber === 'guest';
+  const isGuest = user?.email === 'guest@iiitbhopal.ac.in';
 
 
   const renderContent = () => {
      if (loadingData) {
         return <LoadingSpinner />;
      }
-     // Add a check here to ensure studentData is loaded before rendering feeds that depend on it
-      // unless it's a guest or the home page
-     if (!studentData && !isGuest && activeSection !== 'home') {
-         // It's possible studentData fetch failed, show error or different loading state
+     if (!isGuest && user && !studentData && activeSection !== 'home') {
          return (
             <div className="p-4 text-center text-red-500">
                Failed to load profile data. Cannot display content.
@@ -205,56 +192,49 @@ export default function Dashboard() {
      }
 
     switch (activeSection) {
-      case 'home':
-        return <div className="text-center py-10 text-xl font-semibold">Homepage Placeholder - Coming Soon!</div>; // Placeholder for home
-      case 'posts':
-         // Pass setActiveSection for navigation, isGuest for disabling create button
-        return (
-            <div className="space-y-6">
-              <PostsFeed setActiveSection={setActiveSection} isGuest={isGuest} studentData={studentData} />
-            </div>
-        );
-      case 'create-post':
-         // Guests should not reach this state via UI controls
+       case 'home': // Keep home separate
+         return <div className="text-center py-10 text-xl font-semibold">Homepage Placeholder - Coming Soon!</div>;
+       case 'posts':
+         // Pass necessary props to PostsFeed
+         return <PostsFeed setActiveSection={setActiveSection} isGuest={isGuest} studentData={studentData} />;
+       case 'create-post':
          return isGuest ? (
              <p className="p-4 text-center">Guests cannot create posts.</p>
          ) : (
              <CreatePostForm /> // Render the form component
          );
-      case 'lost-found':
-        return <LostAndFoundFeed user={user} studentData={studentData} />;
-      case 'events':
-         return <EventsFeed user={user} studentData={studentData} />;
-      case 'your-posts':
-        // Guests should not reach this state via UI controls
-        return isGuest ? (
-            <p className="p-4 text-center">Guests do not have posts.</p>
-        ) : (
-            <UserPosts user={user} studentData={studentData} />
-        );
-      case 'your-events':
-         // Guests should not reach this state via UI controls
+       case 'lost-found':
+         return <LostAndFoundFeed user={user} studentData={studentData} />;
+       case 'events':
+          return <EventsFeed user={user} studentData={studentData} />;
+       case 'your-posts': // Navigate to this section to show user's posts
          return isGuest ? (
-            <p className="p-4 text-center">Guests do not have events.</p>
+             <p className="p-4 text-center">Guests do not have posts.</p>
          ) : (
-            <UserEvents user={user} studentData={studentData} />
+             <UserPosts user={user} studentData={studentData} />
          );
-      default:
-         // Default to posts view if section is unknown
-         return <PostsFeed setActiveSection={setActiveSection} isGuest={isGuest} studentData={studentData}/>;
+       case 'your-events':
+          return isGuest ? (
+             <p className="p-4 text-center">Guests do not have events.</p>
+          ) : (
+             <UserEvents user={user} studentData={studentData} />
+          );
+       default:
+          // Default back to posts if section is unknown
+          return <PostsFeed setActiveSection={setActiveSection} isGuest={isGuest} studentData={studentData}/>;
     }
   };
 
    const greeting = studentData ? `${getGreeting()}, ${studentData.name}` : getGreeting();
    const initials = studentData ? getInitials(studentData.name) : 'G';
 
+  // Ensure structure and syntax are correct before the return statement
   return (
     <SidebarProvider>
       <Sidebar>
         <SidebarHeader className="p-4 items-center">
            <div className="flex items-center gap-3">
              <Avatar className="h-10 w-10">
-                {/* Add AvatarImage if you store profile picture URLs */}
                <AvatarFallback>{initials}</AvatarFallback>
              </Avatar>
               <div>
@@ -265,19 +245,26 @@ export default function Dashboard() {
         </SidebarHeader>
         <SidebarContent className="p-2">
             <SidebarMenu>
+                 {/* Home Button */}
                  <SidebarMenuItem>
                       <SidebarMenuButton onClick={() => setActiveSection('home')} isActive={activeSection === 'home'} tooltip="Home">
                          <Home />
                          <span>Home</span>
                       </SidebarMenuButton>
                  </SidebarMenuItem>
+                 {/* Posts Button (includes Create Post and Your Posts navigation) */}
                  <SidebarMenuItem>
-                      <SidebarMenuButton onClick={() => setActiveSection('posts')} isActive={['posts', 'create-post'].includes(activeSection)} tooltip="Posts">
+                      <SidebarMenuButton
+                        onClick={() => setActiveSection('posts')}
+                        // Consider 'posts', 'create-post', 'your-posts' active states for the 'Posts' menu item
+                        isActive={['posts', 'create-post', 'your-posts'].includes(activeSection)}
+                        tooltip="Posts"
+                      >
                          <FileText />
                          <span>Posts</span>
                       </SidebarMenuButton>
                  </SidebarMenuItem>
-                  {/* Removed Create Post button */}
+                  {/* Lost & Found Button */}
                   <SidebarMenuItem>
                       <SidebarMenuButton
                         onClick={() => setActiveSection('lost-found')}
@@ -288,41 +275,29 @@ export default function Dashboard() {
                          <span>Lost & Found</span>
                       </SidebarMenuButton>
                    </SidebarMenuItem>
-                   {/* TODO: Add Create Lost/Found Item Button (disabled for guest) */}
+                   {/* Events Button */}
                    <SidebarMenuItem>
                       <SidebarMenuButton
                         onClick={() => setActiveSection('events')}
-                        isActive={activeSection === 'events'}
+                        isActive={['events', 'your-events'].includes(activeSection)} // Consider 'your-events' active for 'Events'
                         tooltip="Events"
                       >
                           <Calendar />
                           <span>Events</span>
                       </SidebarMenuButton>
                    </SidebarMenuItem>
-                   {/* TODO: Add Create Event Button (disabled for guest) */}
-                 {/* Removed Your Posts button */}
-                 <SidebarMenuItem>
-                      <SidebarMenuButton
-                        onClick={() => setActiveSection('your-events')}
-                        isActive={activeSection === 'your-events'}
-                        tooltip="Your Events"
-                        disabled={isGuest} // Disable for guest
-                      >
-                         <Star />
-                          <span>Your Events</span>
-                       </SidebarMenuButton>
-                    </SidebarMenuItem>
-                     <SidebarMenuItem>
-                        <SidebarMenuButton
-                          onClick={() => setActiveSection('your-posts')}
-                          isActive={activeSection === 'your-posts'}
-                          tooltip="Your Posts"
-                          disabled={isGuest} // Disable for guest
-                        >
-                           <User />
-                           <span>Your Posts</span>
+                    {/* TODO: Add Your Events button or integrate into Events page? Keep separate for now */}
+                    {/* <SidebarMenuItem>
+                       <SidebarMenuButton
+                         onClick={() => setActiveSection('your-events')}
+                         isActive={activeSection === 'your-events'}
+                         tooltip="Your Events"
+                         disabled={isGuest}
+                       >
+                          <Star />
+                           <span>Your Events</span>
                         </SidebarMenuButton>
-                     </SidebarMenuItem>
+                     </SidebarMenuItem> */}
              </SidebarMenu>
         </SidebarContent>
         <SidebarFooter className="p-2">
