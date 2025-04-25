@@ -1,3 +1,4 @@
+
 import type { FC } from 'react';
 import { useState } from 'react';
 import type { LostAndFoundItem, StudentProfile } from '@/types';
@@ -26,6 +27,17 @@ interface LostItemCardProps {
     currentUser: User | null;
     currentStudentProfile: StudentProfile | null;
     onItemFoundReported: () => void;
+}
+
+// Helper function to check if a string is a valid URL (basic check)
+const isValidHttpUrl = (string: string | undefined | null): boolean => {
+  if (!string) return false;
+  try {
+    const url = new URL(string);
+    return url.protocol === "http:" || url.protocol === "https:";
+  } catch (_) {
+    return false;
+  }
 }
 
 export const LostItemCard: FC<LostItemCardProps> = ({ item, currentUser, currentStudentProfile, onItemFoundReported }) => {
@@ -68,15 +80,16 @@ export const LostItemCard: FC<LostItemCardProps> = ({ item, currentUser, current
     };
 
     const formattedTimestamp = item.timestamp ? formatDistanceToNow(item.timestamp.toDate(), { addSuffix: true }) : 'Date unknown';
+    const hasValidImageUrl = isValidHttpUrl(item.imageUrl); // Check if imageUrl is a valid URL
 
     return (
         <Card className="flex flex-col h-full shadow-sm hover:shadow-md transition-shadow duration-200">
             <CardHeader>
-                 {/* Display Image if available */}
-                 {item.imageUrl && (
+                 {/* Display Image only if imageUrl is a valid URL string */}
+                 {hasValidImageUrl && (
                     <div className="relative w-full h-40 mb-2 rounded-md overflow-hidden border">
                         <Image
-                            src={item.imageUrl}
+                            src={item.imageUrl!} // Use non-null assertion because we checked with hasValidImageUrl
                             alt={`Image for ${item.title}`}
                             layout="fill"
                             objectFit="cover"
@@ -147,3 +160,4 @@ export const LostItemCard: FC<LostItemCardProps> = ({ item, currentUser, current
         </Card>
     );
 };
+
