@@ -93,6 +93,8 @@ export default function SignupPage() {
           description: "Your account has been created. Redirecting to login...",
       });
 
+      setLoading(false); // Reset loading state *after* success toast
+
       // Redirect to login page after a short delay to allow toast visibility
       setTimeout(() => {
         router.push('/login');
@@ -109,9 +111,7 @@ export default function SignupPage() {
        });
        setLoading(false); // Stop loading on error
     }
-    // No finally block needed here as redirection handles unmounting.
-    // If redirection fails or is delayed significantly, setLoading(false) after router.push could be added,
-    // but typically the component unmounts. setLoading(false) is crucial in the catch block.
+    // setLoading(false) is now handled within try/catch blocks
   };
 
   return (
@@ -214,5 +214,3 @@ export default function SignupPage() {
     </div>
   );
 }
-
-    
