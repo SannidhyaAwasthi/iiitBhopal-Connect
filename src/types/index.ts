@@ -1,7 +1,7 @@
 import type { Timestamp } from 'firebase/firestore';
 
 // Define possible gender values explicitly
-export type Gender = 'Male' | 'Female' | 'Other' | 'Prefer not to say' | 'Unknown'; // Added Unknown as a fallback
+export type Gender = 'Male' | 'Female' | 'Other' | 'Prefer not to say' | 'Unknown'; // Ensure Unknown is included
 
 export interface Student {
   scholarNumber: string; // PK
@@ -14,8 +14,8 @@ export interface Student {
   phoneNumber: string;
   email: string;
   uid: string; // Firebase Auth User ID
-  // Make gender explicitly optional and use the Gender type
-  gender?: Gender; // Use the specific type, mark as optional if it might not exist
+  // Gender from Firestore might be missing, so make it optional here
+  gender?: Gender; // Use the specific type, mark as optional
 }
 
 // Represents the data stored in 'students-by-uid' collection for quick profile access
@@ -29,18 +29,18 @@ export interface StudentUidMap {
 
 
 // Type for the full student profile data used in components after fetching
-// Often combines data from Auth and Firestore
-export interface StudentProfile extends Student {
-    // Inherits all fields from Student
-    // Ensure gender is handled correctly (might be optional initially)
-    gender: Gender; // Make gender required in the profile used by components, providing a default if necessary
+// This type guarantees that gender exists (defaulted if missing from source)
+export interface StudentProfile extends Omit<Student, 'gender'> {
+    // Inherits all fields from Student except gender
+    gender: Gender; // Gender is required here, ensuring it has a value (including 'Unknown')
 }
 
 
 export interface VisibilitySettings {
     branches: string[]; // Empty array means visible to all branches
     yearsOfPassing: number[]; // Empty array means visible to all years
-    genders: string[]; // Empty array means visible to all genders (using string representation of Gender type)
+    // Use Gender type values as strings here for Firestore storage compatibility
+    genders: string[]; // Empty array means visible to all genders
 }
 
 export interface Post {
@@ -50,7 +50,7 @@ export interface Post {
   authorScholarNumber: string; // Denormalized
   authorBranch: string; // Denormalized
   authorYearOfPassing: number; // Denormalized
-  authorGender: Gender; // Denormalized author gender
+  authorGender: Gender; // Denormalized author gender (guaranteed by StudentProfile)
   title: string;
   body: string;
   imageUrls?: string[]; // Optional: URLs of images in Firebase Storage
@@ -141,3 +141,4 @@ export interface EventFavorite {
 //     // Inherits all fields from StudentProfile
 //     // Add any additional combined fields if necessary
 // }
+

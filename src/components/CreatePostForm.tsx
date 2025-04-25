@@ -4,7 +4,7 @@ import { db, storage } from '@/config/firebase';
 import { collection, doc, getDoc, addDoc, serverTimestamp } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import { v4 as uuidv4 } from 'uuid';
-import type { Student, VisibilitySettings } from '@/types'; // Import types
+import type { Student, StudentProfile, VisibilitySettings, Gender } from '@/types'; // Import types including StudentProfile
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
@@ -13,6 +13,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { useToast } from '@/hooks/use-toast';
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import LoadingSpinner from './loading-spinner';
+import { Loader2 } from 'lucide-react'; // Import Loader2
 
 
 // Define available options (can be fetched or hardcoded)
@@ -20,13 +21,15 @@ const AVAILABLE_BRANCHES = ['CSE', 'IT', 'ECE'];
 // Generate years dynamically or hardcode a range
 const CURRENT_YEAR = new Date().getFullYear();
 const AVAILABLE_YEARS = Array.from({ length: 8 }, (_, i) => CURRENT_YEAR + i - 1); // Example: last year to next 6 years
-const AVAILABLE_GENDERS = ['Male', 'Female', 'Other', 'Prefer not to say'];
+// Use the Gender type for available genders
+const AVAILABLE_GENDERS: Gender[] = ['Male', 'Female', 'Other', 'Prefer not to say'];
 
 
 export function CreatePostForm() {
     const { user } = useAuth();
     const { toast } = useToast();
-    const [studentProfile, setStudentProfile] = useState<Student | null>(null);
+    // Use the more specific StudentProfile type which ensures gender exists
+    const [studentProfile, setStudentProfile] = useState<StudentProfile | null>(null);
     const [title, setTitle] = useState('');
     const [body, setBody] = useState('');
     const [images, setImages] = useState<FileList | null>(null);
@@ -47,6 +50,24 @@ export function CreatePostForm() {
                  setLoadingProfile(true);
                  setError(null);
                 try {
+                    // Handle guest user explicitly first
+                    if (user.email === 'guest@iiitbhopal.ac.in') {
+                         setStudentProfile({
+                             name: "Guest",
+                             scholarNumber: "guest",
+                             email: "guest@iiitbhopal.ac.in",
+                             branch: 'Unknown',
+                             yearOfPassing: 0,
+                             programType: 'Undergraduate',
+                             specialRoles: [],
+                             phoneNumber: '',
+                             uid: user.uid,
+                             gender: 'Prefer not to say', // Default gender for guest
+                         } as StudentProfile); // Cast as StudentProfile
+                         return; // Exit early for guest
+                    }
+
+                    // Proceed for non-guest users
                     const uidMapRef = doc(db, 'students-by-uid', user.uid);
                     const uidMapSnap = await getDoc(uidMapRef);
                     if (!uidMapSnap.exists()) throw new Error("Student UID mapping not found.");
@@ -58,10 +79,17 @@ export function CreatePostForm() {
                     const studentSnap = await getDoc(studentDocRef);
                     if (!studentSnap.exists()) throw new Error("Student profile not found.");
 
-                    setStudentProfile(studentSnap.data() as Student);
+                    // Ensure gender exists, providing a default if necessary
+                    const fetchedData = studentSnap.data() as Student; // Assume it matches Student initially
+                    const profileData: StudentProfile = {
+                      ...fetchedData,
+                      gender: fetchedData.gender || 'Unknown', // Provide default if missing
+                    };
+                    setStudentProfile(profileData);
+
                 } catch (err: any) {
                     console.error("Error fetching student profile:", err);
-                    setError("Failed to load your profile. Cannot create post.");
+                    setError("Failed to load your profile. Cannot create post. Reason: " + err.message);
                     setStudentProfile(null);
                      toast({ variant: "destructive", title: "Profile Error", description: "Could not load your profile data." });
                 } finally {
@@ -119,9 +147,9 @@ export function CreatePostForm() {
         setSuccess(null);
         setError(null);
 
-        if (!user || !studentProfile) {
-            setError('You must be logged in and profile loaded to create a post.');
-             toast({ variant: "destructive", title: "Error", description: "User or profile data missing." });
+        if (!user) { // Simplified check, profile check happens later
+            setError('You must be logged in to create a post.');
+            toast({ variant: "destructive", title: "Not Logged In", description: "Please log in." });
             return;
         }
         if (!title || !body) {
@@ -129,6 +157,28 @@ export function CreatePostForm() {
             toast({ variant: "destructive", title: "Missing Fields", description: "Please provide a title and body." });
             return;
         }
+        if (!studentProfile) { // Check if profile has loaded
+            setError('Student profile is not loaded yet. Please wait or try refreshing.');
+            toast({ variant: "destructive", title: "Profile Not Loaded", description: "Profile data is unavailable." });
+            return;
+        }
+
+         // **Critical Check**: Ensure all required fields for tags exist before proceeding
+         if (!studentProfile.name || !studentProfile.scholarNumber || !studentProfile.branch || typeof studentProfile.yearOfPassing !== 'number' || !studentProfile.gender) {
+             const missingFields = [
+                 !studentProfile.name && 'name',
+                 !studentProfile.scholarNumber && 'scholar number',
+                 !studentProfile.branch && 'branch',
+                 typeof studentProfile.yearOfPassing !== 'number' && 'year of passing',
+                 !studentProfile.gender && 'gender',
+             ].filter(Boolean).join(', ');
+
+             setError(`Profile data is incomplete (missing: ${missingFields}). Cannot create post.`);
+             toast({ variant: "destructive", title: "Profile Error", description: `Incomplete profile data (missing: ${missingFields}).` });
+             setIsLoading(false); // Ensure loading stops
+             return;
+         }
+
 
         setIsLoading(true);
 
@@ -139,49 +189,61 @@ export function CreatePostForm() {
                 toast({ title: "Uploading Images...", description: `Uploading ${images.length} image(s).` });
                 for (const file of Array.from(images)) {
                     const uniqueFileName = `${uuidv4()}-${file.name}`;
-                    // Use scholarNumber in path for better organization (optional)
-                    const imagePath = `posts/${studentProfile.scholarNumber}/${uniqueFileName}`;
+                    // Use user.uid in path for better security and alignment with rules
+                    const imagePath = `posts/${user.uid}/${uniqueFileName}`;
                     const imageRef = ref(storage, imagePath);
 
                     try {
+                        console.log(`Attempting to upload image to: ${imagePath}`);
                         const uploadResult = await uploadBytes(imageRef, file);
                         const downloadURL = await getDownloadURL(uploadResult.ref);
                         imageUrls.push(downloadURL);
+                        console.log(`Successfully uploaded ${file.name} to ${downloadURL}`);
                     } catch (uploadError: any) {
                          console.error("Error uploading image:", file.name, uploadError);
-                         // Decide how to handle partial upload failures (e.g., continue without image, show error)
-                          throw new Error(`Failed to upload image: ${file.name}. ${uploadError.message}`);
+                          // Provide more specific feedback based on the error code
+                          if (uploadError.code === 'storage/unauthorized') {
+                             setError(`Permission denied: You don't have permission to upload images. Please check Storage Rules.`);
+                             toast({ variant: "destructive", title: "Upload Failed", description: "Permission denied to upload image." });
+                          } else {
+                             setError(`Failed to upload image: ${file.name}. ${uploadError.message}`);
+                             toast({ variant: "destructive", title: "Upload Failed", description: `Error uploading ${file.name}.` });
+                          }
+                         // Stop the entire post creation if an image fails to upload
+                         setIsLoading(false);
+                         return;
                      }
                 }
                  toast({ title: "Images Uploaded", description: "Images successfully uploaded." });
             }
 
-            // 2. Prepare tags using fetched studentProfile
+            // 2. Prepare tags using fetched studentProfile (already validated above)
+            // Now safe to use toLowerCase() as fields are confirmed to exist
             const tags = [
                 studentProfile.name.toLowerCase(),
                 studentProfile.scholarNumber.toLowerCase(),
                 studentProfile.branch.toLowerCase(),
                 studentProfile.yearOfPassing.toString(),
-                studentProfile.gender.toLowerCase(), // Add gender tag
-            ].filter(tag => tag); // Filter out empty strings
+                studentProfile.gender.toLowerCase(), // gender is now guaranteed to exist
+            ].filter(tag => !!tag); // Filter out any potential empty strings just in case
 
 
              // 3. Create post document
              const postsCollectionRef = collection(db, 'posts');
              await addDoc(postsCollectionRef, {
                  authorId: user.uid,
-                 authorName: studentProfile.name, // Use fetched name
-                 authorScholarNumber: studentProfile.scholarNumber, // Use fetched scholar number
-                 authorBranch: studentProfile.branch, // Use fetched branch
-                 authorYearOfPassing: studentProfile.yearOfPassing, // Use fetched year
-                 authorGender: studentProfile.gender, // Use fetched gender
+                 authorName: studentProfile.name,
+                 authorScholarNumber: studentProfile.scholarNumber,
+                 authorBranch: studentProfile.branch,
+                 authorYearOfPassing: studentProfile.yearOfPassing,
+                 authorGender: studentProfile.gender,
                  title: title,
                  body: body,
-                 imageUrls: imageUrls.length > 0 ? imageUrls : [], // Use empty array if no images
+                 imageUrls: imageUrls.length > 0 ? imageUrls : [],
                  timestamp: serverTimestamp(),
                  upvotesCount: 0,
                  downvotesCount: 0,
-                 hotScore: 0,
+                 hotScore: 0, // Initialize hotScore, calculate later if needed
                  tags: tags,
                  visibility: visibility,
              });
@@ -201,8 +263,11 @@ export function CreatePostForm() {
 
         } catch (err: any) {
             console.error("Error creating post:", err);
-            setError(err.message || 'Failed to create post.');
-             toast({ variant: "destructive", title: "Post Creation Failed", description: err.message || 'An unexpected error occurred.' });
+             // Avoid overwriting specific upload errors if they were already set
+             if (!error) {
+                setError(err.message || 'Failed to create post.');
+                toast({ variant: "destructive", title: "Post Creation Failed", description: err.message || 'An unexpected error occurred.' });
+             }
         } finally {
             setIsLoading(false);
         }
@@ -213,7 +278,7 @@ export function CreatePostForm() {
          return <div className="p-4"><LoadingSpinner /> Loading profile...</div>;
      }
 
-     if (error && !studentProfile) { // Show profile loading error prominently
+     if (error && !studentProfile && !user?.email?.includes('guest')) { // Show profile loading error prominently for non-guests
           return (
                <div className="p-4">
                    <Alert variant="destructive">
@@ -380,22 +445,23 @@ export function CreatePostForm() {
     );
 }
 
-// Basic Loader Icon (replace with lucide if preferred)
-function Loader2(props: React.SVGProps<SVGSVGElement>) {
-  return (
-    <svg
-      xmlns="http://www.w3.org/2000/svg"
-      width="24"
-      height="24"
-      viewBox="0 0 24 24"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="2"
-      strokeLinecap="round"
-      strokeLinejoin="round"
-      {...props}
-    >
-      <path d="M21 12a9 9 0 1 1-6.219-8.56" />
-    </svg>
-  );
-}
+// Kept the basic Loader Icon
+// function Loader2(props: React.SVGProps<SVGSVGElement>) {
+//   return (
+//     <svg
+//       xmlns="http://www.w3.org/2000/svg"
+//       width="24"
+//       height="24"
+//       viewBox="0 0 24 24"
+//       fill="none"
+//       stroke="currentColor"
+//       strokeWidth="2"
+//       strokeLinecap="round"
+//       strokeLinejoin="round"
+//       {...props}
+//     >
+//       <path d="M21 12a9 9 0 1 1-6.219-8.56" />
+//     </svg>
+//   );
+// }
+
