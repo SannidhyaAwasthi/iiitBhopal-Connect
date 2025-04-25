@@ -7,18 +7,18 @@ import { db } from '@/config/firebase';
 import { SidebarProvider, Sidebar, SidebarHeader, SidebarContent, SidebarFooter, SidebarTrigger, SidebarInset, SidebarMenu, SidebarMenuItem, SidebarMenuButton } from '@/components/ui/sidebar';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
-import { Home, FileText, Search, Calendar, Star, LogOut, Settings, User, PlusCircle } from 'lucide-react';
+import { Home, FileText, Search, Calendar, Star, LogOut, Settings, User } from 'lucide-react'; // Removed PlusCircle
 import { signOut } from 'firebase/auth';
 import { auth } from '@/config/firebase';
 import { useRouter } from 'next/navigation';
 import { useToast } from '@/hooks/use-toast';
-import PostsFeed from './posts-feed';
+import PostsFeed from './posts-feed'; // Keep this
 import LostAndFoundFeed from './lost-found-feed';
 import EventsFeed from './events-feed';
 import UserPosts from './user-posts';
 import UserEvents from './user-events';
 import LoadingSpinner from '@/components/loading-spinner';
-import type { Student } from '@/types';
+import type { Student, StudentProfile } from '@/types'; // Import StudentProfile
 import { CreatePostForm } from './CreatePostForm'; // Keep this import
 
 const getGreeting = () => {
@@ -40,7 +40,7 @@ const getInitials = (name: string = '') => {
 
 export default function Dashboard() {
   const { user } = useAuth();
-  const [studentData, setStudentData] = useState<Student | null>(null);
+  const [studentData, setStudentData] = useState<StudentProfile | null>(null); // Use StudentProfile
   // Default active section changed to 'posts'
   const [activeSection, setActiveSection] = useState('posts'); // home, posts, lost-found, events, your-posts, your-events, create-post
   const [loadingData, setLoadingData] = useState(true);
@@ -64,8 +64,8 @@ export default function Dashboard() {
                  specialRoles: [],
                  phoneNumber: '',
                  uid: user.uid,
-                 gender: 'Prefer not to say',
-             } as Student);
+                 gender: 'Prefer not to say', // Gender is guaranteed by StudentProfile
+             });
              return; // Exit early for guest
           }
 
@@ -85,14 +85,24 @@ export default function Dashboard() {
                  const fetchedData = studentDocSnap.data() as Omit<Student, 'gender'> & { gender?: Student['gender'] };
                  setStudentData({
                      ...fetchedData,
+                     // Ensure required fields exist, providing defaults if necessary
+                     name: fetchedData.name || user.displayName || "Student",
+                     scholarNumber: fetchedData.scholarNumber || "N/A",
+                     email: fetchedData.email || user.email || "N/A",
+                     branch: fetchedData.branch || 'Unknown',
+                     yearOfPassing: fetchedData.yearOfPassing || 0,
+                     programType: fetchedData.programType || 'Undergraduate',
+                     specialRoles: fetchedData.specialRoles || [],
+                     phoneNumber: fetchedData.phoneNumber || '',
+                     uid: fetchedData.uid || user.uid, // Ensure UID is present
                      gender: fetchedData.gender || 'Unknown', // Provide default if undefined
-                 } as Student);
+                 });
               } else {
                  console.warn("No student document found for scholar number:", scholarNumber);
                  // Fallback to Auth display name if Firestore doc doesn't exist
                  setStudentData({
                     name: user.displayName || "Student",
-                    scholarNumber: "N/A",
+                    scholarNumber: "N/A", // Indicate missing data
                     email: user.email || "N/A",
                     branch: 'Unknown',
                     yearOfPassing: 0,
@@ -101,11 +111,10 @@ export default function Dashboard() {
                     phoneNumber: '',
                     uid: user.uid,
                     gender: 'Prefer not to say',
-                 } as Student);
+                 });
               }
             } else {
                 console.warn("Scholar number not found in UID map for user:", user.uid);
-                // Handle case where UID map exists but scholar number is missing
                  setStudentData({
                     name: user.displayName || "Student",
                     scholarNumber: "N/A",
@@ -117,7 +126,7 @@ export default function Dashboard() {
                     phoneNumber: '',
                     uid: user.uid,
                     gender: 'Prefer not to say',
-                 } as Student);
+                 });
             }
           } else {
              console.warn("No UID map document found for user:", user.uid);
@@ -133,7 +142,7 @@ export default function Dashboard() {
                 phoneNumber: '',
                 uid: user.uid,
                 gender: 'Prefer not to say',
-              } as Student);
+              });
           }
         } catch (error) {
           console.error("Error fetching student data:", error);
@@ -149,7 +158,8 @@ export default function Dashboard() {
                 phoneNumber: '',
                 uid: user.uid,
                 gender: 'Prefer not to say',
-            } as Student);
+            });
+             toast({ variant: "destructive", title: "Profile Error", description: "Could not load your profile data." });
         } finally {
           setLoadingData(false);
         }
@@ -161,7 +171,7 @@ export default function Dashboard() {
     };
 
     fetchStudentData();
-  }, [user]); // Rerun when user object changes
+  }, [user, toast]); // Rerun when user object changes
 
 
   const handleLogout = async () => {
@@ -176,25 +186,38 @@ export default function Dashboard() {
   };
 
   // Disable create post/event/lost&found for guest user
-  const isGuest = user?.email === 'guest@iiitbhopal.ac.in';
+   const isGuest = user?.email === 'guest@iiitbhopal.ac.in' || studentData?.scholarNumber === 'guest';
+
 
   const renderContent = () => {
+     if (loadingData) {
+        return <LoadingSpinner />;
+     }
+     // Add a check here to ensure studentData is loaded before rendering feeds that depend on it
+      // unless it's a guest or the home page
+     if (!studentData && !isGuest && activeSection !== 'home') {
+         // It's possible studentData fetch failed, show error or different loading state
+         return (
+            <div className="p-4 text-center text-red-500">
+               Failed to load profile data. Cannot display content.
+            </div>
+         );
+     }
+
     switch (activeSection) {
       case 'home':
         return <div className="text-center py-10 text-xl font-semibold">Homepage Placeholder - Coming Soon!</div>; // Placeholder for home
       case 'posts':
-        // Pass setActiveSection ONLY if PostsFeed needs to navigate away (e.g., to create post)
-        // Otherwise, it might not need it anymore if the button is inside PostsFeed.
+         // Pass setActiveSection for navigation, isGuest for disabling create button
         return (
             <div className="space-y-6">
-              {/* Pass setActiveSection only if needed, otherwise remove */}
-              <PostsFeed setActiveSection={setActiveSection} isGuest={isGuest} />
+              <PostsFeed setActiveSection={setActiveSection} isGuest={isGuest} studentData={studentData} />
             </div>
         );
       case 'create-post':
          // Guests should not reach this state via UI controls
          return isGuest ? (
-             <p>Guests cannot create posts.</p>
+             <p className="p-4 text-center">Guests cannot create posts.</p>
          ) : (
              <CreatePostForm /> // Render the form component
          );
@@ -205,20 +228,20 @@ export default function Dashboard() {
       case 'your-posts':
         // Guests should not reach this state via UI controls
         return isGuest ? (
-            <p>Guests do not have posts.</p>
+            <p className="p-4 text-center">Guests do not have posts.</p>
         ) : (
             <UserPosts user={user} studentData={studentData} />
         );
       case 'your-events':
          // Guests should not reach this state via UI controls
          return isGuest ? (
-            <p>Guests do not have events.</p>
+            <p className="p-4 text-center">Guests do not have events.</p>
          ) : (
             <UserEvents user={user} studentData={studentData} />
          );
       default:
          // Default to posts view if section is unknown
-         return <PostsFeed setActiveSection={setActiveSection} isGuest={isGuest}/>;
+         return <PostsFeed setActiveSection={setActiveSection} isGuest={isGuest} studentData={studentData}/>;
     }
   };
 
@@ -231,10 +254,11 @@ export default function Dashboard() {
         <SidebarHeader className="p-4 items-center">
            <div className="flex items-center gap-3">
              <Avatar className="h-10 w-10">
+                {/* Add AvatarImage if you store profile picture URLs */}
                <AvatarFallback>{initials}</AvatarFallback>
              </Avatar>
               <div>
-                  <p className="text-sm font-semibold text-sidebar-foreground">{studentData?.name || 'Loading...'}</p>
+                  <p className="text-sm font-semibold text-sidebar-foreground">{studentData?.name || (loadingData ? 'Loading...' : 'User')}</p>
                   <p className="text-xs text-sidebar-foreground/80">{studentData?.scholarNumber || '...'}</p>
                </div>
            </div>
@@ -248,23 +272,12 @@ export default function Dashboard() {
                       </SidebarMenuButton>
                  </SidebarMenuItem>
                  <SidebarMenuItem>
-                      <SidebarMenuButton onClick={() => setActiveSection('posts')} isActive={activeSection === 'posts'} tooltip="Posts">
+                      <SidebarMenuButton onClick={() => setActiveSection('posts')} isActive={['posts', 'create-post'].includes(activeSection)} tooltip="Posts">
                          <FileText />
                          <span>Posts</span>
                       </SidebarMenuButton>
                  </SidebarMenuItem>
-                  {/* Sidebar button to navigate TO the Create Post view */}
-                  <SidebarMenuItem>
-                      <SidebarMenuButton
-                        onClick={() => setActiveSection('create-post')}
-                        isActive={activeSection === 'create-post'}
-                        tooltip="Create Post"
-                        disabled={isGuest} // Disable for guest
-                      >
-                         <PlusCircle />
-                         <span>Create Post</span>
-                      </SidebarMenuButton>
-                  </SidebarMenuItem>
+                  {/* Removed Create Post button */}
                   <SidebarMenuItem>
                       <SidebarMenuButton
                         onClick={() => setActiveSection('lost-found')}
@@ -287,18 +300,8 @@ export default function Dashboard() {
                       </SidebarMenuButton>
                    </SidebarMenuItem>
                    {/* TODO: Add Create Event Button (disabled for guest) */}
+                 {/* Removed Your Posts button */}
                  <SidebarMenuItem>
-                      <SidebarMenuButton
-                        onClick={() => setActiveSection('your-posts')}
-                        isActive={activeSection === 'your-posts'}
-                        tooltip="Your Posts"
-                        disabled={isGuest} // Disable for guest
-                      >
-                         <User />
-                          <span>Your Posts</span>
-                      </SidebarMenuButton>
-                  </SidebarMenuItem>
-                   <SidebarMenuItem>
                       <SidebarMenuButton
                         onClick={() => setActiveSection('your-events')}
                         isActive={activeSection === 'your-events'}
@@ -309,6 +312,17 @@ export default function Dashboard() {
                           <span>Your Events</span>
                        </SidebarMenuButton>
                     </SidebarMenuItem>
+                     <SidebarMenuItem>
+                        <SidebarMenuButton
+                          onClick={() => setActiveSection('your-posts')}
+                          isActive={activeSection === 'your-posts'}
+                          tooltip="Your Posts"
+                          disabled={isGuest} // Disable for guest
+                        >
+                           <User />
+                           <span>Your Posts</span>
+                        </SidebarMenuButton>
+                     </SidebarMenuItem>
              </SidebarMenu>
         </SidebarContent>
         <SidebarFooter className="p-2">
@@ -327,11 +341,10 @@ export default function Dashboard() {
            </div>
             <div className="hidden sm:flex items-center gap-4"> {/* Show only greeting on larger screens */}
                 <h1 className="text-lg font-semibold">{greeting}</h1>
-                 {/* Removed the global create button from here */}
             </div>
          </header>
         <main className="flex-1 p-4 md:p-6 lg:p-8 overflow-auto">
-           {loadingData ? <LoadingSpinner /> : renderContent()}
+           {renderContent()}
         </main>
       </SidebarInset>
     </SidebarProvider>
