@@ -1,0 +1,128 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Rules for the 'students' collection
+    match /students/{scholarNum} {
+      allow create: if request.auth != null
+                          && request.resource.data.uid == request.auth.uid
+                          && request.resource.id == request.resource.data.scholarNumber;
+      allow read: if request.auth != null;
+      allow update, delete: if request.auth != null && (request.auth.uid == resource.data.uid || isAdmin());
+    }
+
+    // Rules for the 'students-by-uid' collection
+    match /students-by-uid/{userId} {
+      allow create: if request.auth != null && request.auth.uid == userId;
+      // Allow reading the user's own mapping doc (needed for profile fetch)
+      allow read: if request.auth != null && request.auth.uid == userId;
+      allow update, delete: if false || isAdmin(); // Generally prevent updates/deletes unless admin
+    }
+
+
+    // Rules for the 'posts' collection
+    match /posts/{postId} {
+      allow read: if request.auth != null; // Allow any authenticated user to read posts
+      allow create: if request.auth != null; // Allow any authenticated user to create posts
+
+      // Update Rules:
+      allow update: if request.auth != null && (
+          // Allow author or admin to update anything
+          (resource.data.authorId == request.auth.uid || isAdmin()) ||
+          // Allow any authenticated user to update ONLY vote counts
+          (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['upvotesCount', 'downvotesCount']))
+       );
+
+       // Delete Rules: Only author or admin can delete
+      allow delete: if request.auth != null && (resource.data.authorId == request.auth.uid || isAdmin());
+    }
+
+    // Rules for the 'post_votes' collection
+    match /post_votes/{voteId} {
+      // Allow reading a specific vote document path if the user is authenticated and the ID starts with their UID.
+      // This is necessary for transaction.get() even if the document doesn't exist yet.
+      allow get: if request.auth != null && voteId.split('_')[0] == request.auth.uid;
+
+      // Allow list reads (queries) if they filter by the user's UID (e.g., for getPostsVoteStatus)
+      // This rule matches the query used in getPostsVoteStatus (where('userId', '==', userId))
+      allow list: if request.auth != null && request.query.get("userId") == request.auth.uid;
+
+			// Allow read only if the document's userId matches the authenticated user's uid
+      allow read: if request.auth != null && request.auth.uid == resource.data.userId;
+      // allow write: if request.auth != null; // Removed generic write, replaced by specific create/update/delete
+
+      // Allow authenticated users to create or update their vote for a post
+      // Enforce that the document ID matches the expected format and userId matches auth UID
+      allow create, update: if request.auth != null
+         && request.auth.uid == request.resource.data.userId
+         && voteId == request.auth.uid + "_" + request.resource.data.postId;
+
+      // Allow deleting own vote (needed for unvoting)
+      allow delete: if request.auth != null && resource.data.userId == request.auth.uid;
+    }
+
+    // Rules for the 'favoritePosts' collection
+    match /favoritePosts/{favoriteId} {
+      // Allow reading a specific favorite document path if the user is authenticated and the ID starts with their UID.
+      // Necessary for getDoc() in handleFavorite.
+      allow get: if request.auth != null && favoriteId.split('_')[0] == request.auth.uid;
+
+      // Allow list reads (queries) if they filter by the user's UID (e.g., for getFavoritePostIds)
+      // This rule matches the query used in getFavoritePostIds (where('userId', '==', userId))
+      allow list: if request.auth != null && request.query.get("userId") == request.auth.uid;
+
+      // Allow read only if the document's userId matches the authenticated user's uid
+      allow read: if request.auth != null && request.auth.uid == resource.data.userId;
+      // allow write: if request.auth != null; // Removed generic write, replaced by specific create/delete
+
+      // Allow authenticated users to create their favorites
+       // Enforce that the document ID matches the expected format and userId matches auth UID
+      allow create: if request.auth != null
+         && request.auth.uid == request.resource.data.userId
+         && favoriteId == request.auth.uid + "_" + request.resource.data.postId;
+
+      // Allow authenticated users to delete their own favorites
+      allow delete: if request.auth != null && resource.data.userId == request.auth.uid;
+    }
+
+    // Rules for the 'lostAndFound' collection
+    match /lostAndFound/{itemId} {
+      // Allow any authenticated user to read any lost or found item
+      allow read: if request.auth != null;
+
+      // Allow any authenticated user to create a lost or found report, ensuring reporterId matches their UID
+      allow create: if request.auth != null
+                      && request.resource.data.reporterId == request.auth.uid;
+
+      // Update rules:
+      allow update: if request.auth != null && (
+          // Allow the original reporter to update status, confirmedClaimer, claimers (e.g., confirm claim)
+          (resource.data.reporterId == request.auth.uid &&
+             (
+               // Specific fields reporter can change
+               request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'confirmedClaimer', 'claimers'])
+             )
+          ) ||
+          // Allow any authenticated user to add/remove themselves from the claimers array for 'found' items
+          (resource.data.type == 'found' &&
+             request.resource.data.diff(resource.data).affectedKeys().hasOnly(['claimers']) &&
+             ( // Check if the user is adding/removing ONLY themselves
+               (request.resource.data.claimers.toSet().difference(resource.data.claimers.toSet()).hasOnly([request.auth.uid])) || // Adding self
+               (resource.data.claimers.toSet().difference(request.resource.data.claimers.toSet()).hasOnly([request.auth.uid]))    // Removing self
+             )
+          )
+      );
+
+      // Delete rules: Only the reporter can delete their own 'found' post.
+      // Consider if 'lost' posts should be deletable or just marked inactive? For now, allow reporter to delete own posts.
+      allow delete: if request.auth != null && resource.data.reporterId == request.auth.uid;
+    }
+
+  }
+
+  // Function to check if the user is an admin (ensure 'admins' collection exists and has docs with 'isAdmin' field)
+  function isAdmin() {
+    // Use exists() for safer check
+    return exists(/databases/$(database)/documents/admins/$(request.auth.uid)) &&
+           get(/databases/$(database)/documents/admins/$(request.auth.uid)).data.isAdmin == true;
+  }
+}
