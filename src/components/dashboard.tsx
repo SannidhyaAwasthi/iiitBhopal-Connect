@@ -7,7 +7,7 @@ import { db } from '@/config/firebase';
 import { SidebarProvider, Sidebar, SidebarHeader, SidebarContent, SidebarFooter, SidebarTrigger, SidebarInset, SidebarMenu, SidebarMenuItem, SidebarMenuButton } from '@/components/ui/sidebar';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
-import { Home, FileText, Search, Calendar, Star, LogOut, Settings, User, PlusCircle } from 'lucide-react'; // Added PlusCircle
+import { Home, FileText, Search, Calendar, Star, LogOut, Settings, User, PlusCircle } from 'lucide-react';
 import { signOut } from 'firebase/auth';
 import { auth } from '@/config/firebase';
 import { useRouter } from 'next/navigation';
@@ -18,8 +18,8 @@ import EventsFeed from './events-feed';
 import UserPosts from './user-posts';
 import UserEvents from './user-events';
 import LoadingSpinner from '@/components/loading-spinner';
-import type { Student } from '@/types'; // Import Student type
-import { CreatePostForm } from './CreatePostForm'; // Import CreatePostForm
+import type { Student } from '@/types';
+import { CreatePostForm } from './CreatePostForm';
 
 const getGreeting = () => {
   const hour = new Date().getHours();
@@ -40,7 +40,7 @@ const getInitials = (name: string = '') => {
 
 export default function Dashboard() {
   const { user } = useAuth();
-  const [studentData, setStudentData] = useState<Student | null>(null); // Use Student type
+  const [studentData, setStudentData] = useState<Student | null>(null);
   const [activeSection, setActiveSection] = useState('home'); // home, posts, lost-found, events, your-posts, your-events, create-post
   const [loadingData, setLoadingData] = useState(true);
   const router = useRouter();
@@ -48,10 +48,27 @@ export default function Dashboard() {
 
   useEffect(() => {
     const fetchStudentData = async () => {
-      if (user && user.email !== 'guest@iiitbhopal.ac.in') { // Use correct guest email
-        setLoadingData(true); // Start loading when fetching
+      if (user) {
+        setLoadingData(true);
         try {
-          // 1. Get scholar number from UID mapping
+          // Handle guest user explicitly first
+          if (user.email === 'guest@iiitbhopal.ac.in') {
+             setStudentData({
+                 name: "Guest",
+                 scholarNumber: "guest",
+                 email: "guest@iiitbhopal.ac.in",
+                 branch: 'Unknown',
+                 yearOfPassing: 0,
+                 programType: 'Undergraduate',
+                 specialRoles: [],
+                 phoneNumber: '',
+                 uid: user.uid,
+                 gender: 'Prefer not to say',
+             } as Student);
+             return; // Exit early for guest
+          }
+
+          // Proceed for non-guest users
           const uidMapRef = doc(db, 'students-by-uid', user.uid);
           const uidMapSnap = await getDoc(uidMapRef);
 
@@ -59,31 +76,34 @@ export default function Dashboard() {
             const scholarNumber = uidMapSnap.data()?.scholarNumber;
 
             if (scholarNumber) {
-              // 2. Fetch full student data using scholar number
               const studentDocRef = doc(db, 'students', scholarNumber);
               const studentDocSnap = await getDoc(studentDocRef);
 
               if (studentDocSnap.exists()) {
-                 setStudentData(studentDocSnap.data() as Student);
+                 // Ensure gender is always set, defaulting to 'Unknown' if missing
+                 const fetchedData = studentDocSnap.data() as Omit<Student, 'gender'> & { gender?: Student['gender'] };
+                 setStudentData({
+                     ...fetchedData,
+                     gender: fetchedData.gender || 'Unknown', // Provide default if undefined
+                 } as Student);
               } else {
-                console.log("No student document found for scholar number:", scholarNumber);
+                 console.warn("No student document found for scholar number:", scholarNumber);
                  // Fallback to Auth display name if Firestore doc doesn't exist
                  setStudentData({
                     name: user.displayName || "Student",
-                    scholarNumber: "N/A", // Indicate missing data
+                    scholarNumber: "N/A",
                     email: user.email || "N/A",
-                    // Provide defaults for other required Student fields
                     branch: 'Unknown',
                     yearOfPassing: 0,
                     programType: 'Undergraduate',
                     specialRoles: [],
                     phoneNumber: '',
                     uid: user.uid,
-                    gender: 'Prefer not to say', // Provide default gender
+                    gender: 'Prefer not to say',
                  } as Student);
               }
             } else {
-                console.log("Scholar number not found in UID map for user:", user.uid);
+                console.warn("Scholar number not found in UID map for user:", user.uid);
                 // Handle case where UID map exists but scholar number is missing
                  setStudentData({
                     name: user.displayName || "Student",
@@ -95,12 +115,11 @@ export default function Dashboard() {
                     specialRoles: [],
                     phoneNumber: '',
                     uid: user.uid,
-                    gender: 'Prefer not to say', // Provide default gender
+                    gender: 'Prefer not to say',
                  } as Student);
             }
-
           } else {
-            console.log("No UID map document found for user:", user.uid);
+             console.warn("No UID map document found for user:", user.uid);
              // Fallback if UID map doesn't exist
               setStudentData({
                 name: user.displayName || "Student",
@@ -112,7 +131,7 @@ export default function Dashboard() {
                 specialRoles: [],
                 phoneNumber: '',
                 uid: user.uid,
-                gender: 'Prefer not to say', // Provide default gender
+                gender: 'Prefer not to say',
               } as Student);
           }
         } catch (error) {
@@ -128,26 +147,11 @@ export default function Dashboard() {
                 specialRoles: [],
                 phoneNumber: '',
                 uid: user.uid,
-                gender: 'Prefer not to say', // Provide default gender
+                gender: 'Prefer not to say',
             } as Student);
         } finally {
           setLoadingData(false);
         }
-      } else if (user && user.email === 'guest@iiitbhopal.ac.in') { // Use correct guest email
-         // Handle guest user
-         setStudentData({
-             name: "Guest",
-             scholarNumber: "guest",
-             email: "guest@iiitbhopal.ac.in",
-             branch: 'Unknown',
-             yearOfPassing: 0,
-             programType: 'Undergraduate',
-             specialRoles: [],
-             phoneNumber: '',
-             uid: user.uid,
-             gender: 'Prefer not to say', // Provide default gender for guest
-            } as Student);
-         setLoadingData(false);
       } else {
          // No user logged in or still loading auth state
          setStudentData(null); // Clear data if no user
@@ -170,43 +174,50 @@ export default function Dashboard() {
     }
   };
 
-  const renderContent = () => {
-    // Pass student data to components that need it
-    // const commonProps = { user, studentData }; // studentData is already fetched in PostsFeed etc.
+  // Disable create post/event/lost&found for guest user
+  const isGuest = user?.email === 'guest@iiitbhopal.ac.in';
 
+  const renderContent = () => {
     switch (activeSection) {
       case 'home':
       case 'posts':
         return (
             <div className="space-y-6">
-              {/* Removed CreatePostForm from here to avoid duplication */}
-              <PostsFeed /> {/* Pass props if needed, but currently not */}
+              <PostsFeed setActiveSection={setActiveSection} isGuest={isGuest}/>
             </div>
         );
       case 'create-post':
-         return <CreatePostForm />; // Render the form directly
+         // Guests should not reach this state via UI controls
+         return isGuest ? (
+             <p>Guests cannot create posts.</p>
+         ) : (
+             <CreatePostForm />
+         );
       case 'lost-found':
-        // Pass props explicitly if LostAndFoundFeed needs them
         return <LostAndFoundFeed user={user} studentData={studentData} />;
       case 'events':
-         // Pass props explicitly if EventsFeed needs them
          return <EventsFeed user={user} studentData={studentData} />;
       case 'your-posts':
-        // Pass props explicitly if UserPosts needs them
-        return <UserPosts user={user} studentData={studentData} />;
+        // Guests should not reach this state via UI controls
+        return isGuest ? (
+            <p>Guests do not have posts.</p>
+        ) : (
+            <UserPosts user={user} studentData={studentData} />
+        );
       case 'your-events':
-         // Pass props explicitly if UserEvents needs them
-         return <UserEvents user={user} studentData={studentData} />;
+         // Guests should not reach this state via UI controls
+         return isGuest ? (
+            <p>Guests do not have events.</p>
+         ) : (
+            <UserEvents user={user} studentData={studentData} />
+         );
       default:
-         return <PostsFeed />; // Default to PostsFeed
+         return <PostsFeed setActiveSection={setActiveSection} isGuest={isGuest}/>; // Default to PostsFeed
     }
   };
 
    const greeting = studentData ? `${getGreeting()}, ${studentData.name}` : getGreeting();
-   const initials = studentData ? getInitials(studentData.name) : 'G'; // G for Guest
-
-  // Disable create post/event/lost&found for guest user
-  const isGuest = user?.email === 'guest@iiitbhopal.ac.in';
+   const initials = studentData ? getInitials(studentData.name) : 'G';
 
   return (
     <SidebarProvider>
@@ -214,7 +225,6 @@ export default function Dashboard() {
         <SidebarHeader className="p-4 items-center">
            <div className="flex items-center gap-3">
              <Avatar className="h-10 w-10">
-                {/* TODO: Add AvatarImage if profile picture URL exists in studentData */}
                <AvatarFallback>{initials}</AvatarFallback>
              </Avatar>
               <div>
@@ -226,17 +236,12 @@ export default function Dashboard() {
         <SidebarContent className="p-2">
             <SidebarMenu>
                  <SidebarMenuItem>
-                      <SidebarMenuButton onClick={() => setActiveSection('home')} isActive={activeSection === 'home'} tooltip="Home">
+                      <SidebarMenuButton onClick={() => setActiveSection('home')} isActive={['home', 'posts'].includes(activeSection)} tooltip="Home">
                          <Home />
-                         <span>Home</span>
+                         <span>Home / Posts</span>
                       </SidebarMenuButton>
                  </SidebarMenuItem>
-                  <SidebarMenuItem>
-                      <SidebarMenuButton onClick={() => setActiveSection('posts')} isActive={activeSection === 'posts'} tooltip="Posts">
-                         <FileText />
-                         <span>Posts Feed</span>
-                      </SidebarMenuButton>
-                  </SidebarMenuItem>
+                  {/* Removed explicit Posts Feed button */}
                   <SidebarMenuItem>
                       <SidebarMenuButton
                         onClick={() => setActiveSection('create-post')}
@@ -310,17 +315,8 @@ export default function Dashboard() {
            </div>
             <div className="hidden sm:flex items-center gap-4"> {/* Show only greeting on larger screens */}
                 <h1 className="text-lg font-semibold">{greeting}</h1>
-                 {/* Optionally add a global create button here? */}
-                 {!isGuest && (
-                    <Button size="sm" onClick={() => setActiveSection('create-post')}>
-                      <PlusCircle className="mr-2 h-4 w-4" /> Create Post
-                    </Button>
-                 )}
+                 {/* Removed the global create button from here */}
             </div>
-             {/* Sidebar trigger on large screens (if needed) */}
-             {/* <div className="sm:hidden"> {/* Only show trigger button on small screens if sidebar is collapsed initially */}
-               {/* <SidebarTrigger /> */}
-             {/* </div> */}
          </header>
         <main className="flex-1 p-4 md:p-6 lg:p-8 overflow-auto">
            {loadingData ? <LoadingSpinner /> : renderContent()}
