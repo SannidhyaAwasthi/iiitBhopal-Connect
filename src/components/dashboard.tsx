@@ -19,7 +19,7 @@ import UserPosts from './user-posts';
 import UserEvents from './user-events';
 import LoadingSpinner from '@/components/loading-spinner';
 import type { Student } from '@/types';
-import { CreatePostForm } from './CreatePostForm';
+import { CreatePostForm } from './CreatePostForm'; // Keep this import
 
 const getGreeting = () => {
   const hour = new Date().getHours();
@@ -41,7 +41,8 @@ const getInitials = (name: string = '') => {
 export default function Dashboard() {
   const { user } = useAuth();
   const [studentData, setStudentData] = useState<Student | null>(null);
-  const [activeSection, setActiveSection] = useState('home'); // home, posts, lost-found, events, your-posts, your-events, create-post
+  // Default active section changed to 'posts'
+  const [activeSection, setActiveSection] = useState('posts'); // home, posts, lost-found, events, your-posts, your-events, create-post
   const [loadingData, setLoadingData] = useState(true);
   const router = useRouter();
   const { toast } = useToast();
@@ -180,10 +181,14 @@ export default function Dashboard() {
   const renderContent = () => {
     switch (activeSection) {
       case 'home':
+        return <div className="text-center py-10 text-xl font-semibold">Homepage Placeholder - Coming Soon!</div>; // Placeholder for home
       case 'posts':
+        // Pass setActiveSection ONLY if PostsFeed needs to navigate away (e.g., to create post)
+        // Otherwise, it might not need it anymore if the button is inside PostsFeed.
         return (
             <div className="space-y-6">
-              <PostsFeed setActiveSection={setActiveSection} isGuest={isGuest}/>
+              {/* Pass setActiveSection only if needed, otherwise remove */}
+              <PostsFeed setActiveSection={setActiveSection} isGuest={isGuest} />
             </div>
         );
       case 'create-post':
@@ -191,7 +196,7 @@ export default function Dashboard() {
          return isGuest ? (
              <p>Guests cannot create posts.</p>
          ) : (
-             <CreatePostForm />
+             <CreatePostForm /> // Render the form component
          );
       case 'lost-found':
         return <LostAndFoundFeed user={user} studentData={studentData} />;
@@ -212,7 +217,8 @@ export default function Dashboard() {
             <UserEvents user={user} studentData={studentData} />
          );
       default:
-         return <PostsFeed setActiveSection={setActiveSection} isGuest={isGuest}/>; // Default to PostsFeed
+         // Default to posts view if section is unknown
+         return <PostsFeed setActiveSection={setActiveSection} isGuest={isGuest}/>;
     }
   };
 
@@ -236,12 +242,18 @@ export default function Dashboard() {
         <SidebarContent className="p-2">
             <SidebarMenu>
                  <SidebarMenuItem>
-                      <SidebarMenuButton onClick={() => setActiveSection('home')} isActive={['home', 'posts'].includes(activeSection)} tooltip="Home">
+                      <SidebarMenuButton onClick={() => setActiveSection('home')} isActive={activeSection === 'home'} tooltip="Home">
                          <Home />
-                         <span>Home / Posts</span>
+                         <span>Home</span>
                       </SidebarMenuButton>
                  </SidebarMenuItem>
-                  {/* Removed explicit Posts Feed button */}
+                 <SidebarMenuItem>
+                      <SidebarMenuButton onClick={() => setActiveSection('posts')} isActive={activeSection === 'posts'} tooltip="Posts">
+                         <FileText />
+                         <span>Posts</span>
+                      </SidebarMenuButton>
+                 </SidebarMenuItem>
+                  {/* Sidebar button to navigate TO the Create Post view */}
                   <SidebarMenuItem>
                       <SidebarMenuButton
                         onClick={() => setActiveSection('create-post')}
