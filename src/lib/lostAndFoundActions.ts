@@ -24,73 +24,111 @@ const LOST_AND_FOUND_COLLECTION = 'lostAndFound';
 const STUDENTS_COLLECTION = 'students'; // Assuming this is the name
 const STUDENTS_BY_UID_COLLECTION = 'students-by-uid';
 
+// === Helper Function for Image Upload (Common for Lost & Found) ===
+async function uploadLostFoundImage(
+    reporterId: string,
+    imageFile: File
+): Promise<string> {
+    if (!reporterId) {
+        throw new Error("Reporter ID is missing for image upload.");
+    }
+    try {
+        const uniqueFileName = `${uuidv4()}-${imageFile.name}`;
+        const imagePath = `lostAndFound/${reporterId}/${uniqueFileName}`;
+        const storageRef = ref(storage, imagePath);
+
+        console.log(`[uploadLostFoundImage] Uploading image to: ${imagePath}`);
+        const uploadResult = await uploadBytes(storageRef, imageFile);
+        const downloadURL = await getDownloadURL(uploadResult.ref);
+        console.log(`[uploadLostFoundImage] Image uploaded successfully: ${downloadURL}`);
+        return downloadURL;
+    } catch (uploadError: any) {
+        console.error("[uploadLostFoundImage] Error uploading image:", uploadError);
+        if (uploadError.code === 'storage/unauthorized') {
+            throw new Error("Permission denied: You don't have permission to upload images. Check Storage Rules.");
+        } else if (uploadError.code === 'storage/object-not-found') {
+            throw new Error("Upload path not found. Check Storage setup.");
+        } else {
+            throw new Error(`Failed to upload image: ${uploadError.message || 'Unknown storage error'}`);
+        }
+    }
+}
+
 // === Reporting Items ===
 
 /**
- * Adds a new 'lost' item report to Firestore.
+ * Adds a new 'lost' item report to Firestore, optionally uploading an image.
  */
-export async function addLostItem(itemData: Omit<LostAndFoundItem, 'id' | 'imageUrl' | 'claimers' | 'confirmedClaimer'>) {
-    console.log("[addLostItem] Attempting to add:", itemData);
+export async function addLostItem(
+    itemData: Omit<LostAndFoundItem, 'id' | 'imageUrl' | 'claimers' | 'confirmedClaimer' | 'type'>,
+    imageFile: File | null
+) {
+    console.log("[addLostItem] Attempting to add:", itemData, "with image:", !!imageFile);
+    let imageUrl: string | undefined = undefined;
+
+    if (imageFile) {
+        imageUrl = await uploadLostFoundImage(itemData.reporterId, imageFile); // Use helper
+    }
+
     try {
-        const docRef = await addDoc(collection(db, LOST_AND_FOUND_COLLECTION), {
+        const docData = {
             ...itemData,
-            type: 'lost',
+            type: 'lost', // Explicitly set type
             status: 'active', // Explicitly set status
-            createdAt: serverTimestamp(), // Add creation timestamp for potential sorting/filtering
-        });
+            imageUrl: imageUrl, // Add URL if uploaded
+            claimers: [], // Initialize empty
+            confirmedClaimer: null, // Initialize null
+            createdAt: serverTimestamp(), // Add creation timestamp
+        };
+        console.log("[addLostItem] Preparing to write to Firestore:", docData);
+
+        const docRef = await addDoc(collection(db, LOST_AND_FOUND_COLLECTION), docData);
         console.log("[addLostItem] Lost item reported successfully with ID: ", docRef.id);
         return docRef.id;
-    } catch (error) {
-        console.error("[addLostItem] Error adding lost item: ", error);
-        throw new Error("Failed to report lost item.");
+    } catch (firestoreError: any) {
+        console.error("[addLostItem] Error adding lost item to Firestore: ", firestoreError);
+        // Cleanup image if Firestore write failed
+        if (imageUrl) {
+             console.warn("[addLostItem] Firestore write failed after image upload. Attempting image cleanup.");
+            try {
+                const imageRefToDelete = ref(storage, imageUrl);
+                await deleteObject(imageRefToDelete);
+                console.log("[addLostItem] Cleaned up uploaded image due to Firestore error.");
+            } catch (cleanupError) {
+                console.error("[addLostItem] Error cleaning up image:", cleanupError);
+            }
+        }
+        if (firestoreError.code === 'permission-denied') {
+            throw new Error("Permission denied: Could not save the lost item report. Check Firestore Rules.");
+        } else {
+            throw new Error(`Failed to report lost item: ${firestoreError.message || 'Unknown database error'}`);
+        }
     }
 }
+
 
 /**
  * Adds a new 'found' item report to Firestore, optionally uploading an image.
  */
 export async function addFoundItem(
-    itemData: Omit<LostAndFoundItem, 'id' | 'imageUrl' | 'confirmedClaimer'>,
+    itemData: Omit<LostAndFoundItem, 'id' | 'imageUrl' | 'confirmedClaimer' | 'type'>,
     imageFile: File | null
 ) {
     console.log("[addFoundItem] Attempting to add:", itemData, "with image:", !!imageFile);
     let imageUrl: string | undefined = undefined;
 
     if (imageFile) {
-        try {
-            // Use reporterId for folder structure
-             if (!itemData.reporterId) {
-                 throw new Error("Reporter ID is missing for image upload.");
-             }
-            const uniqueFileName = `${uuidv4()}-${imageFile.name}`;
-            // Define the storage path. Ensure rules allow writes here.
-            const imagePath = `lostAndFound/${itemData.reporterId}/${uniqueFileName}`;
-            const storageRef = ref(storage, imagePath);
-
-            console.log(`[addFoundItem] Uploading image to: ${imagePath}`);
-            const uploadResult = await uploadBytes(storageRef, imageFile);
-            imageUrl = await getDownloadURL(uploadResult.ref);
-            console.log(`[addFoundItem] Image uploaded successfully: ${imageUrl}`);
-        } catch (uploadError: any) {
-            console.error("[addFoundItem] Error uploading found item image:", uploadError);
-            // Provide more specific error feedback if possible
-             if (uploadError.code === 'storage/unauthorized') {
-                 throw new Error("Permission denied: You don't have permission to upload images. Check Storage Rules.");
-             } else if (uploadError.code === 'storage/object-not-found') {
-                 throw new Error("Upload path not found. Check Storage setup.");
-             } else {
-                throw new Error(`Failed to upload image: ${uploadError.message || 'Unknown storage error'}`);
-             }
-        }
+         imageUrl = await uploadLostFoundImage(itemData.reporterId, imageFile); // Use helper
     }
 
     try {
         const docData = {
             ...itemData,
-            type: 'found',
+            type: 'found', // Explicitly set type
             status: 'active',
             imageUrl: imageUrl, // Add the URL if upload was successful
-            claimers: [], // Initialize empty array
+            claimers: itemData.claimers || [], // Ensure claimers is an array
+            confirmedClaimer: itemData.confirmedClaimer || null, // Ensure it's null or a value
             createdAt: serverTimestamp(),
             timestamp: itemData.timestamp || Timestamp.now() // Ensure timestamp exists
         };
@@ -101,9 +139,9 @@ export async function addFoundItem(
         return docRef.id;
     } catch (firestoreError: any) {
         console.error("[addFoundItem] Error adding found item to Firestore: ", firestoreError);
-        // If image upload succeeded but Firestore failed, attempt to delete the image
+        // Cleanup image if Firestore write failed
         if (imageUrl) {
-            console.warn("[addFoundItem] Firestore write failed after image upload. Attempting image cleanup.");
+             console.warn("[addFoundItem] Firestore write failed after image upload. Attempting image cleanup.");
             try {
                 const imageRefToDelete = ref(storage, imageUrl);
                 await deleteObject(imageRefToDelete);
@@ -112,7 +150,6 @@ export async function addFoundItem(
                 console.error("[addFoundItem] Error cleaning up image:", cleanupError);
             }
         }
-        // Provide more specific Firestore error feedback if possible
         if (firestoreError.code === 'permission-denied') {
             throw new Error("Permission denied: Could not save the found item report. Check Firestore Rules.");
         } else {
@@ -186,8 +223,9 @@ export async function reportItemAsFound(lostItem: LostAndFoundItem, finderProfil
 
     try {
         // Create the data for the new 'found' item post
-        const newFoundItemData: Omit<LostAndFoundItem, 'id' | 'imageUrl' | 'confirmedClaimer'> = {
-            type: 'found',
+        // IMPORTANT: Match the structure required by addFoundItem
+        const newFoundItemData: Omit<LostAndFoundItem, 'id' | 'imageUrl' | 'confirmedClaimer' | 'type'> = {
+            // type: 'found', // Type will be set by addFoundItem
             title: `Found: ${lostItem.title}`, // Pre-fill title
             description: lostItem.description, // Copy description
             timestamp: Timestamp.now(), // Set found timestamp to now
@@ -195,21 +233,24 @@ export async function reportItemAsFound(lostItem: LostAndFoundItem, finderProfil
             reporterId: finderProfile.uid, // Use finder's details
             reporterName: finderProfile.name,
             reporterScholarNumber: finderProfile.scholarNumber,
-            status: 'active',
-            claimers: [],
-            // Do not copy imageUrl from lost item
+            status: 'active', // Found items start active
+            claimers: [], // Initialize empty
+            // confirmedClaimer: null // Initialize null
         };
 
         console.log("[reportItemAsFound] Data for new 'found' post:", newFoundItemData);
 
-        // Call addFoundItem to create the new document (no image initially)
+        // Call addFoundItem to create the new document. Pass null for image initially.
+        // If the lost item had an image, we don't copy it automatically. The finder can add one later if needed.
         const newDocId = await addFoundItem(newFoundItemData, null);
 
         console.log(`[reportItemAsFound] Successfully created new 'found' post (ID: ${newDocId}) based on lost item ID ${lostItem.id}.`);
 
-        // Optionally, you might want to update the original lost item's status,
-        // but the current approach keeps them separate.
-        // await updateDoc(doc(db, LOST_AND_FOUND_COLLECTION, lostItem.id), { status: 'inactive' });
+        // Optionally, mark the original lost item as inactive
+        const lostItemRef = doc(db, LOST_AND_FOUND_COLLECTION, lostItem.id);
+        await updateDoc(lostItemRef, { status: 'inactive' });
+        console.log(`[reportItemAsFound] Marked original lost item ${lostItem.id} as inactive.`);
+
 
     } catch (error) {
         console.error("[reportItemAsFound] Error reporting item as found: ", error);
@@ -233,6 +274,10 @@ export async function claimItem(itemId: string, userId: string) {
         console.log(`[claimItem] User ${userId} successfully claimed item ${itemId}`);
     } catch (error) {
         console.error(`[claimItem] Error claiming item ${itemId} for user ${userId}: `, error);
+        // Check for permission errors explicitly
+         if ((error as any).code === 'permission-denied') {
+             throw new Error("Permission denied: Could not claim item. Check Firestore Rules.");
+         }
         throw new Error("Failed to claim item.");
     }
 }
@@ -251,6 +296,9 @@ export async function unclaimItem(itemId: string, userId: string) {
         console.log(`[unclaimItem] User ${userId} successfully unclaimed item ${itemId}`);
     } catch (error) {
         console.error(`[unclaimItem] Error unclaiming item ${itemId} for user ${userId}: `, error);
+        if ((error as any).code === 'permission-denied') {
+             throw new Error("Permission denied: Could not unclaim item. Check Firestore Rules.");
+         }
         throw new Error("Failed to unclaim item.");
     }
 }
@@ -271,6 +319,9 @@ export async function confirmClaim(itemId: string, claimerUid: string) {
         console.log(`[confirmClaim] Claim confirmed for item ${itemId} by user ${claimerUid}`);
     } catch (error) {
         console.error(`[confirmClaim] Error confirming claim for item ${itemId}: `, error);
+         if ((error as any).code === 'permission-denied') {
+             throw new Error("Permission denied: Could not confirm claim. Check Firestore Rules.");
+         }
         throw new Error("Failed to confirm claim.");
     }
 }
@@ -294,17 +345,19 @@ export async function deleteFoundItem(itemId: string, imageUrl?: string) {
                 await deleteObject(imageRefToDelete);
                 console.log(`[deleteFoundItem] Deleted associated image: ${imageUrl}`);
             } catch (imageError: any) {
-                 // Log error but don't fail the whole operation if image deletion fails
                  console.error(`[deleteFoundItem] Failed to delete image ${imageUrl}:`, imageError);
                  if (imageError.code === 'storage/object-not-found') {
                      console.warn(`[deleteFoundItem] Image ${imageUrl} not found in storage, possibly already deleted.`);
                  } else if (imageError.code === 'storage/unauthorized') {
                       console.error(`[deleteFoundItem] Permission denied to delete image ${imageUrl}. Check Storage Rules.`);
-                 }
+                 } // Don't fail the whole operation if image deletion fails
             }
         }
     } catch (error) {
         console.error(`[deleteFoundItem] Error deleting found item post ${itemId}: `, error);
+         if ((error as any).code === 'permission-denied') {
+             throw new Error("Permission denied: Could not delete post. Check Firestore Rules.");
+         }
         throw new Error("Failed to delete found item post.");
     }
 }
@@ -357,8 +410,7 @@ export async function fetchClaimerDetails(claimerUids: string[]): Promise<Claime
                     };
                 } else {
                     console.warn(`[fetchClaimerDetails] No student profile found for scholar #: ${scholarNumber} (UID: ${uid})`);
-                    // Return basic info if profile not found but UID and scholar number are known
-                    return { uid: uid, name: 'Unknown Name', scholarNumber: scholarNumber };
+                    return { uid: uid, name: 'Unknown Name', scholarNumber: scholarNumber }; // Return basic info if profile not found
                 }
             } catch (error) {
                 console.error(`[fetchClaimerDetails] Error fetching details for UID ${uid}:`, error);

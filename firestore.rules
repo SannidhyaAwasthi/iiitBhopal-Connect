@@ -1,100 +1,96 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Rules for the 'students' collection
+
+    // --- Student Data Rules ---
     match /students/{scholarNum} {
       allow create: if request.auth != null
                           && request.resource.data.uid == request.auth.uid
                           && request.resource.id == request.resource.data.scholarNumber;
-      allow read: if request.auth != null;
+      allow read: if request.auth != null; // Allow any authenticated user to read student profiles (needed for claimer info)
       allow update, delete: if request.auth != null && (request.auth.uid == resource.data.uid || isAdmin());
     }
 
-    // Rules for the 'students-by-uid' collection
     match /students-by-uid/{userId} {
       allow create: if request.auth != null && request.auth.uid == userId;
-      // Allow reading the user's own mapping doc (needed for profile fetch)
-      allow read: if request.auth != null && request.auth.uid == userId;
-      allow update, delete: if false || isAdmin(); // Generally prevent updates/deletes unless admin
+      allow read: if request.auth != null && request.auth.uid == userId; // Allow reading own mapping
+      allow update, delete: if false || isAdmin();
     }
 
-
-    // Rules for the 'posts' collection
+    // --- Posts Rules ---
     match /posts/{postId} {
-      allow read: if request.auth != null; // Allow any authenticated user to read posts
-      allow create: if request.auth != null; // Allow any authenticated user to create posts
-
-      // Update Rules:
+      allow read: if request.auth != null;
+      allow create: if request.auth != null;
       allow update: if request.auth != null && (
-          // Allow author or admin to update anything
           (resource.data.authorId == request.auth.uid || isAdmin()) ||
-          // Allow any authenticated user to update ONLY vote counts
           (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['upvotesCount', 'downvotesCount']))
        );
-
-       // Delete Rules: Only author or admin can delete
       allow delete: if request.auth != null && (resource.data.authorId == request.auth.uid || isAdmin());
     }
 
-    // Rules for the 'post_votes' collection
+    // --- Post Votes Rules ---
     match /post_votes/{voteId} {
-      // Allow reading a specific vote document path if the user is authenticated and the ID starts with their UID.
-      // This is necessary for transaction.get() even if the document doesn't exist yet.
       allow get: if request.auth != null && voteId.split('_')[0] == request.auth.uid;
-
-      // Allow list reads (queries) if they filter by the user's UID (e.g., for getPostsVoteStatus)
-      allow list: if request.auth != null && request.query.limit <= 10 && request.auth.uid == request.query.get("userId");
-
-
-      // Allow authenticated users to create or update their vote for a post
-      // Enforce that the document ID matches the expected format and userId matches auth UID
+      allow list: if request.auth != null && request.query.userId == request.auth.uid; // Use request.query.userId
+      allow read: if request.auth != null && request.auth.uid == resource.data.userId;
       allow create, update: if request.auth != null
          && request.auth.uid == request.resource.data.userId
          && voteId == request.auth.uid + "_" + request.resource.data.postId;
-
-      // Allow deleting own vote (needed for unvoting)
       allow delete: if request.auth != null && resource.data.userId == request.auth.uid;
     }
 
-    // Rules for the 'favoritePosts' collection
+    // --- Favorite Posts Rules ---
     match /favoritePosts/{favoriteId} {
-      // Allow reading a specific favorite document path if the user is authenticated and the ID starts with their UID.
-      // Necessary for getDoc() in handleFavorite.
       allow get: if request.auth != null && favoriteId.split('_')[0] == request.auth.uid;
-
-      // Allow list reads (queries) if they filter by the user's UID (e.g., for getFavoritePostIds)
-      allow list: if request.auth != null && request.auth.uid == request.query.get("userId");
-
-
-      // Allow authenticated users to create their favorites
-       // Enforce that the document ID matches the expected format and userId matches auth UID
+      allow list: if request.auth != null && request.query.userId == request.auth.uid; // Use request.query.userId
+      allow read: if request.auth != null && request.auth.uid == resource.data.userId;
       allow create: if request.auth != null
          && request.auth.uid == request.resource.data.userId
          && favoriteId == request.auth.uid + "_" + request.resource.data.postId;
-
-      // Allow authenticated users to delete their own favorites
       allow delete: if request.auth != null && resource.data.userId == request.auth.uid;
+    }
+
+    // --- Lost and Found Rules ---
+    match /lostAndFound/{itemId} {
+      // Allow any authenticated user to read any lost/found item.
+      // Filtering for 'active' status happens client-side.
+      allow read: if request.auth != null;
+
+      // Allow authenticated users to create new lost/found items.
+      // Additional validation (e.g., required fields) should happen client-side or via functions.
+      allow create: if request.auth != null && request.auth.uid == request.resource.data.reporterId;
+
+      // Allow updates based on the action:
+      // - Reporter can delete their own post.
+      // - Reporter can confirm a claim (update status, confirmedClaimer, claimers).
+      // - Any authenticated user can claim/unclaim (update claimers array).
+      allow update: if request.auth != null && (
+          // Reporter confirming a claim (changes status, confirmedClaimer, claimers)
+          (resource.data.reporterId == request.auth.uid &&
+           request.resource.data.status == 'inactive' && // Status must become inactive
+           request.resource.data.confirmedClaimer is string && // confirmedClaimer must be set
+           request.resource.data.claimers is list && request.resource.data.claimers.size() == 0 // Claimers must be cleared
+          ) ||
+          // Any user claiming/unclaiming (only affects 'claimers' array)
+          (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['claimers']))
+      );
+
+      // Allow reporter to delete their own post.
+      allow delete: if request.auth != null && resource.data.reporterId == request.auth.uid;
+    }
+
+    // Admin collection (example)
+    match /admins/{userId} {
+      allow read: if true; // Or restrict as needed
     }
   }
 
   // --- Helper Functions ---
-
-  // Function to check if the user has an admin role
-  // Assumes an 'admins' collection where document ID is the user's UID
-  // and the document contains an 'isAdmin' boolean field.
   function isAdmin() {
-    // Use exists() for safer checking than accessing .data directly
-    return exists(/databases/$(database)/documents/admins/$(request.auth.uid)) &&
-           get(/databases/$(database)/documents/admins/$(request.auth.uid)).data.isAdmin == true;
+    // Check if the requesting user's UID exists in the 'admins' collection
+    // Ensure the 'admins' collection structure matches this check.
+    return exists(/databases/$(database)/documents/admins/$(request.auth.uid));
+    // Or, if using a field within the user's profile:
+    // return get(/databases/$(database)/documents/students-by-uid/$(request.auth.uid)).data.isAdmin == true;
   }
-
-  // Helper function to get user profile data (example)
-  // Caution: Using get() in rules can impact performance and cost. Use judiciously.
-  // Consider denormalizing data (like branch, yearOfPassing, gender) onto a user-specific doc if needed frequently.
-  // function getUserProfile(userId) {
-  //   // Assumes you have a 'students-by-uid' mapping to get the scholarNumber
-  //   let scholarNum = get(/databases/$(database)/documents/students-by-uid/$(userId)).data.scholarNumber;
-  //   // Then get the full profile from the 'students' collection
-  //   return get(/databases/$(database)/documents/students/$(scholarNum)).data;
-  // }
 }

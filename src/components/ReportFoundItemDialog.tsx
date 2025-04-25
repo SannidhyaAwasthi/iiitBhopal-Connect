@@ -102,6 +102,7 @@ export const ReportFoundItemDialog: FC<ReportFoundItemDialogProps> = ({ isOpen, 
             toast({ variant: "destructive", title: "Missing Fields", description: "Please fill in all required fields." });
             return;
         }
+         // Image is now optional, no need for check here
 
         setIsLoading(true);
 
@@ -117,7 +118,7 @@ export const ReportFoundItemDialog: FC<ReportFoundItemDialogProps> = ({ isOpen, 
                 reporterScholarNumber: studentData.scholarNumber,
                 status: 'active', // Found items start as active
                 claimers: [], // Initialize empty claimers array
-            }, imageFile); // Pass image file to the action
+            }, imageFile); // Pass image file (which can be null)
 
             toast({ title: "Found Item Reported", description: "Thank you for reporting the item." });
             resetForm();
@@ -129,7 +130,6 @@ export const ReportFoundItemDialog: FC<ReportFoundItemDialogProps> = ({ isOpen, 
             toast({ variant: "destructive", title: "Report Failed", description: err.message || 'An unexpected error occurred.' });
             setIsLoading(false); // Keep loading false on error
         }
-        // No need for finally block if we reset isLoading in the success/error paths
     };
 
     const handleClose = (open: boolean) => {
