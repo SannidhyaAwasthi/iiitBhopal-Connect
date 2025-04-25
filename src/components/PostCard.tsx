@@ -27,6 +27,9 @@ export const PostCard = React.forwardRef<HTMLDivElement, PostCardProps>(({ post 
     const [isVoting, setIsVoting] = useState(false); // Prevent rapid clicks on vote
     const [isFavoriting, setIsFavoriting] = useState(false); // Prevent rapid clicks on favorite
 
+    // console.log(`[PostCard] Post ID: ${post.id}, Initial Status - Vote: ${post.userVote}, Favorite: ${post.isFavorite}`); // Keep for debugging if needed
+
+
     // Effect to update local state if the post prop changes externally (e.g., on a feed refresh)
      useEffect(() => {
          setCurrentUpvotes(post.upvotesCount);
@@ -197,45 +200,50 @@ export const PostCard = React.forwardRef<HTMLDivElement, PostCardProps>(({ post 
              {post.imageUrls && post.imageUrls.length > 0 && (
                  <div className="mt-4 mb-4 grid grid-cols-2 sm:grid-cols-3 gap-2">
                      {post.imageUrls.map((url, index) => (
-                         <img
-                            key={index}
-                            src={url}
-                            alt={`Post image ${index + 1}`}
-                            className="w-full h-32 sm:h-40 object-cover rounded-md border border-border"
-                            loading="lazy" // Add lazy loading
-                         />
+                         // --- Wrap image in <a> tag ---
+                         <a key={index} href={url} target="_blank" rel="noopener noreferrer" className="block">
+                             <img
+                                src={url}
+                                alt={`Post image ${index + 1}`}
+                                className="w-full h-32 sm:h-40 object-cover rounded-md border border-border cursor-pointer"
+                                loading="lazy" // Add lazy loading
+                             />
+                         </a>
                      ))}
                  </div>
              )}
 
-            <div className="mt-4 pt-3 border-t border-border flex items-center space-x-4"> {/* Adjusted spacing */}
-                 {/* Upvote Button */}
-                <button
-                    onClick={() => onVote('up')}
-                    className={upvoteButtonClass}
-                    disabled={!user || isLoading}
-                    aria-pressed={currentUserVote === 'up'} // Accessibility
-                    aria-label="Upvote"
-                    title="Upvote"
-                >
-                    {isVoting && currentUserVote !== 'down' ? <Loader2 className="h-4 w-4 animate-spin"/> : <ThumbsUp className={`h-5 w-5 ${currentUserVote === 'up' ? 'fill-current' : ''}`} />}
-                    <span className="text-sm tabular-nums">{currentUpvotes}</span>
-                </button>
+            {/* --- Adjusted button container layout --- */}
+            <div className="mt-4 pt-3 border-t border-border flex items-center justify-between"> {/* Use justify-between */}
+                 <div className="flex items-center space-x-4"> {/* Group vote buttons */}
+                     {/* Upvote Button */}
+                    <button
+                        onClick={() => onVote('up')}
+                        className={upvoteButtonClass}
+                        disabled={!user || isLoading}
+                        aria-pressed={currentUserVote === 'up'} // Accessibility
+                        aria-label="Upvote"
+                        title="Upvote"
+                    >
+                        {isVoting && currentUserVote !== 'down' ? <Loader2 className="h-4 w-4 animate-spin"/> : <ThumbsUp className={`h-5 w-5 ${currentUserVote === 'up' ? 'fill-current' : ''}`} />}
+                        <span className="text-sm tabular-nums">{currentUpvotes}</span>
+                    </button>
 
-                 {/* Downvote Button */}
-                <button
-                    onClick={() => onVote('down')}
-                    className={downvoteButtonClass}
-                    disabled={!user || isLoading}
-                    aria-pressed={currentUserVote === 'down'} // Accessibility
-                    aria-label="Downvote"
-                    title="Downvote"
-                >
-                     {isVoting && currentUserVote !== 'up' ? <Loader2 className="h-4 w-4 animate-spin"/> : <ThumbsDown className={`h-5 w-5 ${currentUserVote === 'down' ? 'fill-current' : ''}`} />}
-                    <span className="text-sm tabular-nums">{currentDownvotes}</span>
-                </button>
+                     {/* Downvote Button */}
+                    <button
+                        onClick={() => onVote('down')}
+                        className={downvoteButtonClass}
+                        disabled={!user || isLoading}
+                        aria-pressed={currentUserVote === 'down'} // Accessibility
+                        aria-label="Downvote"
+                        title="Downvote"
+                    >
+                         {isVoting && currentUserVote !== 'up' ? <Loader2 className="h-4 w-4 animate-spin"/> : <ThumbsDown className={`h-5 w-5 ${currentUserVote === 'down' ? 'fill-current' : ''}`} />}
+                        <span className="text-sm tabular-nums">{currentDownvotes}</span>
+                    </button>
+                 </div>
 
-                 {/* Favorite Button */}
+                 {/* Favorite Button - Moved to the right */}
                 <button
                     onClick={onFavorite}
                     className={favoriteButtonClass}

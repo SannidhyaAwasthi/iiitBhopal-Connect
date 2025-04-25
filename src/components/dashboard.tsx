@@ -17,6 +17,7 @@ import LostAndFoundFeed from './lost-found-feed';
 import EventsFeed from './events-feed';
 import UserPosts from './user-posts'; // This will render the user's specific posts
 import UserEvents from './user-events'; // This will render the user's specific events
+import UserFavorites from './user-favorites'; // Import UserFavorites
 import LoadingSpinner from '@/components/loading-spinner';
 import type { StudentProfile } from '@/types'; // Import StudentProfile
 import { CreatePostForm } from './CreatePostForm';
@@ -219,6 +220,12 @@ export default function Dashboard() {
           ) : (
              <UserEvents user={user} studentData={studentData} />
           );
+       case 'your-favorites': // Added case for favorites
+          return isGuest ? (
+             <p className="p-4 text-center">Guests do not have favorites.</p>
+          ) : (
+             <UserFavorites user={user} studentData={studentData} />
+          );
        default:
           // Default back to posts if section is unknown
           return <PostsFeed setActiveSection={setActiveSection} isGuest={isGuest} studentData={studentData}/>;
@@ -252,12 +259,12 @@ export default function Dashboard() {
                          <span>Home</span>
                       </SidebarMenuButton>
                  </SidebarMenuItem>
-                 {/* Posts Button (includes Create Post and Your Posts navigation) */}
+                 {/* Posts Button (Main feed, includes Create, Your Posts, Favorites navigation) */}
                  <SidebarMenuItem>
                       <SidebarMenuButton
                         onClick={() => setActiveSection('posts')}
-                        // Consider 'posts', 'create-post', 'your-posts' active states for the 'Posts' menu item
-                        isActive={['posts', 'create-post', 'your-posts'].includes(activeSection)}
+                        // Consider 'posts', 'create-post', 'your-posts', 'your-favorites' active states for the 'Posts' menu item
+                        isActive={['posts', 'create-post', 'your-posts', 'your-favorites'].includes(activeSection)}
                         tooltip="Posts"
                       >
                          <FileText />
@@ -286,18 +293,6 @@ export default function Dashboard() {
                           <span>Events</span>
                       </SidebarMenuButton>
                    </SidebarMenuItem>
-                    {/* TODO: Add Your Events button or integrate into Events page? Keep separate for now */}
-                    {/* <SidebarMenuItem>
-                       <SidebarMenuButton
-                         onClick={() => setActiveSection('your-events')}
-                         isActive={activeSection === 'your-events'}
-                         tooltip="Your Events"
-                         disabled={isGuest}
-                       >
-                          <Star />
-                           <span>Your Events</span>
-                        </SidebarMenuButton>
-                     </SidebarMenuItem> */}
              </SidebarMenu>
         </SidebarContent>
         <SidebarFooter className="p-2">

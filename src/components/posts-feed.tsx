@@ -19,7 +19,7 @@ import {
 import { PostCard } from './PostCard';
 import LoadingSpinner from './loading-spinner';
 import { Button } from '@/components/ui/button'; // Import Button
-import { PlusCircle, User as UserIcon } from 'lucide-react'; // Icons for buttons
+import { PlusCircle, User as UserIcon, Star } from 'lucide-react'; // Icons for buttons, added Star
 import { useAuth } from '@/hooks/use-auth';
 import { getPostsVoteStatus, getFavoritePostIds } from '@/lib/postActions';
 import type { StudentProfile } from '@/types'; // Import StudentProfile type
@@ -52,13 +52,10 @@ interface PostsFeedProps {
     studentData: StudentProfile | null; // Pass studentData down
 }
 
-type SortOption = 'recent' | 'popular' | 'hot';
+// Remove 'hot' from SortOption type
+type SortOption = 'recent' | 'popular';
 
 const POSTS_PER_PAGE = 10;
-
-// Rename StudentProfile from types/index to avoid conflict if PostsFeed defines its own internal type
-// type StudentProfile = StudentProfileType;
-
 
 const PostsFeed: FC<PostsFeedProps> = ({ setActiveSection, isGuest, studentData: initialStudentData }) => {
     const { user } = useAuth();
@@ -74,7 +71,7 @@ const PostsFeed: FC<PostsFeedProps> = ({ setActiveSection, isGuest, studentData:
     const [error, setError] = useState<string | null>(null);
     const [lastVisible, setLastVisible] = useState<QueryDocumentSnapshot | null>(null);
     const [hasMore, setHasMore] = useState(true);
-    const [sortOption, setSortOption] = useState<SortOption>('recent');
+    const [sortOption, setSortOption] = useState<SortOption>('recent'); // Default sort
     const observer = useRef<IntersectionObserver | null>(null);
     const isFetchingRef = useRef(false);
     const initialLoadDoneRef = useRef(false); // Ref to track if the initial load effect has run
@@ -104,6 +101,9 @@ const PostsFeed: FC<PostsFeedProps> = ({ setActiveSection, isGuest, studentData:
            return;
        }
 
+       console.log(`[PostsFeed] fetchPosts called. User: ${user?.uid ? user.uid : 'None'}, isGuest: ${isGuest}, studentData: ${!!studentData}`);
+
+
         const currentLastVisible = loadMore ? lastVisible : null;
         const shouldSetInitialLoading = !loadMore;
 
@@ -120,26 +120,11 @@ const PostsFeed: FC<PostsFeedProps> = ({ setActiveSection, isGuest, studentData:
              } else if (sortOption === 'popular') {
                  // Assuming 'upvotesCount' exists. Add secondary sort for stable order.
                  q = query(q, orderBy('upvotesCount', 'desc'), orderBy('timestamp', 'desc'));
-             } else if (sortOption === 'hot') {
-                 // Assuming 'hotScore' exists. Add secondary sort for stable order.
-                 q = query(q, orderBy('hotScore', 'desc'), orderBy('timestamp', 'desc'));
              }
 
              // Apply visibility filters server-side if possible and if profile exists
-             if (studentData && !isGuest) {
-                 // Note: Firestore doesn't directly support "array contains any" or "array is empty OR contains X".
-                 // Visibility filtering often needs to happen client-side after fetching potentially more posts,
-                 // or requires duplicating posts/using complex data structures/Cloud Functions for server-side filtering.
-                 // For simplicity, we'll apply basic filters where possible, acknowledging limitations.
-
-                 // Example: If visibility requires specific branch AND year (less common, but illustrates):
-                 // q = query(q, where('visibility.branches', 'array-contains', studentData.branch)); // Only if visibility.branches is NOT empty
-                 // q = query(q, where('visibility.yearsOfPassing', 'array-contains', studentData.yearOfPassing)); // Only if visibility.yearsOfPassing is NOT empty
-
-                 // Due to Firestore limitations on OR queries and empty checks within array-contains,
-                 // we will fetch based on sort order and then filter client-side.
-             }
-
+             // Using the simplified rule for now (read: if request.auth != null), so no server-side filtering needed here.
+             // If rules become more complex, revisit this.
 
             const limitWithCheck = POSTS_PER_PAGE + 1;
             q = query(q, limit(limitWithCheck));
@@ -159,25 +144,24 @@ const PostsFeed: FC<PostsFeedProps> = ({ setActiveSection, isGuest, studentData:
 
             const hasMoreResults = fetchedPosts.length === limitWithCheck;
             const postsToProcess = hasMoreResults ? fetchedPosts.slice(0, POSTS_PER_PAGE) : fetchedPosts;
-             const newLastVisible = hasMoreResults ? querySnapshot.docs[querySnapshot.docs.length - 2] : querySnapshot.docs[querySnapshot.docs.length - 1] ?? null; // Get the correct last visible doc
+            const newLastVisible = hasMoreResults ? querySnapshot.docs[querySnapshot.docs.length - 2] : querySnapshot.docs[querySnapshot.docs.length - 1] ?? null;
 
-            // --- Client-Side Visibility Filtering ---
-             const profile = studentData;
-             const visiblePosts = postsToProcess.filter(post => {
-                 // Guests see all posts (assuming default visibility is 'all')
-                 if (isGuest) return true;
-                  // If profile data is missing for a logged-in user, they see nothing (handled above)
-                 if (!profile) return false;
+            // --- Client-Side Visibility Filtering (Still useful even with simpler read rules if visibility logic is complex) ---
+            const profile = studentData;
+            const visiblePosts = postsToProcess.filter(post => {
+                // Guests see all posts based on the simplified read rule
+                if (isGuest) return true;
+                // If profile data is missing for a logged-in user, they see nothing (handled above)
+                if (!profile) return false;
 
-                  // Check branch visibility
-                 const isBranchVisible = post.visibility?.branches?.length === 0 || post.visibility?.branches?.includes(profile.branch);
-                  // Check year visibility
-                 const isYearVisible = post.visibility?.yearsOfPassing?.length === 0 || post.visibility?.yearsOfPassing?.includes(profile.yearOfPassing);
-                  // Check gender visibility
-                 const isGenderVisible = post.visibility?.genders?.length === 0 || post.visibility?.genders?.includes(profile.gender);
+                // Visibility check (can be complex, but let's assume it's needed)
+                const isBranchVisible = post.visibility?.branches?.length === 0 || post.visibility?.branches?.includes(profile.branch);
+                const isYearVisible = post.visibility?.yearsOfPassing?.length === 0 || post.visibility?.yearsOfPassing?.includes(profile.yearOfPassing);
+                const isGenderVisible = post.visibility?.genders?.length === 0 || post.visibility?.genders?.includes(profile.gender);
 
-                 return isBranchVisible && isYearVisible && isGenderVisible;
-             });
+                console.log(`[PostsFeed] Post ID: ${post.id}, Visible: ${isBranchVisible && isYearVisible && isGenderVisible}`);
+                return isBranchVisible && isYearVisible && isGenderVisible;
+            });
             console.log(`[PostsFeed] ${visiblePosts.length} posts remaining after client-side filtering.`);
 
 
@@ -185,15 +169,21 @@ const PostsFeed: FC<PostsFeedProps> = ({ setActiveSection, isGuest, studentData:
              const visiblePostIds = visiblePosts.map(post => post.id);
              let voteStatuses: Record<string, 'up' | 'down' | null> = {};
              let favoritePostIds: string[] = [];
+
+             console.log(`[PostsFeed] User ${user?.uid ? 'logged in' : 'not logged in'}. Attempting to fetch vote/favorite status for ${visiblePostIds.length} posts.`);
              if (user && visiblePostIds.length > 0) {
                  try {
+                     console.log("[PostsFeed] Calling getPostsVoteStatus and getFavoritePostIds for user:", user.uid, "and post IDs:", visiblePostIds);
                      [voteStatuses, favoritePostIds] = await Promise.all([
                          getPostsVoteStatus(user.uid, visiblePostIds),
                          getFavoritePostIds(user.uid)
                      ]);
+                     console.log("[PostsFeed] Received voteStatuses:", voteStatuses);
+                     console.log("[PostsFeed] Received favoritePostIds:", favoritePostIds);
+
                  } catch (statusError) {
                      console.error("Error fetching vote/favorite status:", statusError);
-                     // Continue without status, or show partial error?
+                     // Continue without status
                  }
              }
 
@@ -202,6 +192,9 @@ const PostsFeed: FC<PostsFeedProps> = ({ setActiveSection, isGuest, studentData:
                 userVote: voteStatuses[post.id] || null,
                 isFavorite: favoritePostIds.includes(post.id),
             }));
+
+            console.log("[PostsFeed] Posts with user status:", postsWithStatus);
+
 
             setPosts(prevPosts => loadMore ? [...prevPosts, ...postsWithStatus] : postsWithStatus);
             setLastVisible(newLastVisible);
@@ -241,7 +234,7 @@ const PostsFeed: FC<PostsFeedProps> = ({ setActiveSection, isGuest, studentData:
         }
 
     // Depend on user, studentData, sortOption, isGuest, isLoadingUser
-    }, [user, studentData, sortOption, isGuest, isLoadingUser]); // Removed fetchPosts
+    }, [user, studentData, sortOption, isGuest, isLoadingUser, fetchPosts]); // Added fetchPosts back
 
      // Reset initialLoadDoneRef when dependencies that trigger a full refetch change
      useEffect(() => {
@@ -295,7 +288,7 @@ const PostsFeed: FC<PostsFeedProps> = ({ setActiveSection, isGuest, studentData:
         <div className="posts-feed-container max-w-3xl mx-auto p-4 space-y-6">
              {/* Action Buttons */}
             <div className="flex justify-between items-center mb-4 gap-4">
-                <div className="flex gap-2">
+                <div className="flex gap-2 flex-wrap"> {/* Added flex-wrap for smaller screens */}
                      <Button
                          onClick={() => setActiveSection('create-post')}
                          disabled={isGuest || isLoadingProfile} // Disable if guest or profile is loading
@@ -314,11 +307,20 @@ const PostsFeed: FC<PostsFeedProps> = ({ setActiveSection, isGuest, studentData:
                           <UserIcon className="mr-2 h-4 w-4" />
                           Your Posts
                       </Button>
+                      <Button
+                         onClick={() => setActiveSection('your-favorites')} // Navigate to favorites section
+                         disabled={isGuest || isLoadingProfile} // Disable if guest or profile is loading
+                         variant="outline"
+                         size="sm"
+                     >
+                          <Star className="mr-2 h-4 w-4" /> {/* Favorite Icon */}
+                          Favorites
+                      </Button>
                  </div>
 
                  {/* Sort Options */}
-                 <div className="flex items-center">
-                    <label htmlFor="sort-select" className="mr-2 text-gray-700 dark:text-gray-300 text-sm font-medium">Sort By:</label>
+                 <div className="flex items-center ml-auto"> {/* Ensure sort is pushed right */}
+                    <label htmlFor="sort-select" className="mr-2 text-gray-700 dark:text-gray-300 text-sm font-medium hidden sm:inline">Sort By:</label> {/* Hide label on small screens */}
                     <select
                         id="sort-select"
                         value={sortOption}
@@ -331,7 +333,6 @@ const PostsFeed: FC<PostsFeedProps> = ({ setActiveSection, isGuest, studentData:
                     >
                         <option value="recent">Most Recent</option>
                         <option value="popular">Most Popular</option>
-                        <option value="hot">Hot</option>
                     </select>
                  </div>
             </div>
