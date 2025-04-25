@@ -13,7 +13,7 @@ import { auth } from '@/config/firebase';
 import { useRouter } from 'next/navigation';
 import { useToast } from '@/hooks/use-toast';
 import PostsFeed from './posts-feed';
-import LostAndFoundFeed from './lost-found-feed'; // Correct import name
+import LostAndFoundFeed from './LostAndFoundFeed'; // Ensure correct casing
 import EventsFeed from './events-feed';
 import UserPosts from './user-posts';
 import UserEvents from './user-events';
@@ -42,16 +42,18 @@ const getInitials = (name: string = '') => {
 export default function Dashboard() {
   const { user } = useAuth();
   const [studentData, setStudentData] = useState<StudentProfile | null>(null);
-  const [activeSection, setActiveSection] = useState('posts'); // Default to 'posts'
+  const [activeSection, setActiveSection] = useState('home'); // Start with home
   const [loadingData, setLoadingData] = useState(true);
   const router = useRouter();
   const { toast } = useToast();
 
+  // --- Fetch Student Data ---
   useEffect(() => {
     const fetchStudentData = async () => {
       if (user) {
         setLoadingData(true);
         try {
+          // Handle guest user explicitly
           if (user.email === 'guest@iiitbhopal.ac.in') {
              setStudentData({
                  name: "Guest",
@@ -65,75 +67,49 @@ export default function Dashboard() {
                  uid: user.uid,
                  gender: 'Prefer not to say',
              });
-             return;
+             return; // Exit early for guest
           }
 
+          // Proceed for logged-in, non-guest users
           const uidMapRef = doc(db, 'students-by-uid', user.uid);
           const uidMapSnap = await getDoc(uidMapRef);
 
-          if (uidMapSnap.exists()) {
-            const scholarNumber = uidMapSnap.data()?.scholarNumber;
+          if (!uidMapSnap.exists()) throw new Error("Student UID mapping not found.");
 
-            if (scholarNumber) {
-              const studentDocRef = doc(db, 'students', scholarNumber);
-              const studentDocSnap = await getDoc(studentDocRef);
+          const scholarNumber = uidMapSnap.data()?.scholarNumber;
+          if (!scholarNumber) throw new Error("Scholar number not found in mapping.");
 
-              if (studentDocSnap.exists()) {
-                 const fetchedData = studentDocSnap.data() as Omit<StudentProfile, 'gender'> & { gender?: StudentProfile['gender'] };
-                 setStudentData({
-                     ...fetchedData,
-                     name: fetchedData.name || user.displayName || "Student",
-                     scholarNumber: fetchedData.scholarNumber || "N/A",
-                     email: fetchedData.email || user.email || "N/A",
-                     branch: fetchedData.branch || 'Unknown',
-                     yearOfPassing: fetchedData.yearOfPassing || 0,
-                     programType: fetchedData.programType || 'Undergraduate',
-                     specialRoles: fetchedData.specialRoles || [],
-                     phoneNumber: fetchedData.phoneNumber || '',
-                     uid: fetchedData.uid || user.uid,
-                     gender: fetchedData.gender || 'Unknown', // Default gender if missing
-                 });
-              } else {
-                 console.warn("No student document found for scholar number:", scholarNumber);
-                 // Set default/fallback data if student doc is missing
-                 setStudentData({
-                    name: user.displayName || "Student",
-                    scholarNumber: scholarNumber, // Use scholar number from map if available
-                    email: user.email || "N/A",
-                    branch: 'Unknown', yearOfPassing: 0, programType: 'Undergraduate',
-                    specialRoles: [], phoneNumber: '', uid: user.uid, gender: 'Unknown',
-                 });
-              }
-            } else {
-                console.warn("Scholar number not found in UID map for user:", user.uid);
-                // Set default/fallback data if mapping is missing scholar number
-                 setStudentData({
-                    name: user.displayName || "Student",
-                    scholarNumber: "N/A", email: user.email || "N/A",
-                    branch: 'Unknown', yearOfPassing: 0, programType: 'Undergraduate',
-                    specialRoles: [], phoneNumber: '', uid: user.uid, gender: 'Unknown',
-                 });
-            }
-          } else {
-             console.warn("No UID map document found for user:", user.uid);
-             // Set default/fallback data if UID map is missing
-              setStudentData({
-                name: user.displayName || "Student",
-                scholarNumber: "N/A", email: user.email || "N/A",
-                branch: 'Unknown', yearOfPassing: 0, programType: 'Undergraduate',
-                specialRoles: [], phoneNumber: '', uid: user.uid, gender: 'Unknown',
-              });
-          }
-        } catch (error) {
+          const studentDocRef = doc(db, 'students', scholarNumber);
+          const studentDocSnap = await getDoc(studentDocRef);
+
+          if (!studentDocSnap.exists()) throw new Error(`Student profile not found for scholar number: ${scholarNumber}`);
+
+          // Ensure gender exists, providing a default if necessary
+           const fetchedData = studentDocSnap.data() as Omit<StudentProfile, 'gender'> & { gender?: StudentProfile['gender'] };
+           setStudentData({
+               ...fetchedData,
+               name: fetchedData.name || user.displayName || "Student",
+               scholarNumber: fetchedData.scholarNumber || "N/A",
+               email: fetchedData.email || user.email || "N/A",
+               branch: fetchedData.branch || 'Unknown',
+               yearOfPassing: fetchedData.yearOfPassing || 0,
+               programType: fetchedData.programType || 'Undergraduate',
+               specialRoles: fetchedData.specialRoles || [],
+               phoneNumber: fetchedData.phoneNumber || '',
+               uid: fetchedData.uid || user.uid,
+               gender: fetchedData.gender || 'Unknown', // Default gender if missing
+           });
+
+        } catch (error: any) {
           console.error("Error fetching student data:", error);
-          // Set default/fallback data on error
+           // Set fallback data on error for logged-in users
             setStudentData({
                 name: user.displayName || "Student",
                 scholarNumber: "N/A", email: user.email || "N/A",
                 branch: 'Unknown', yearOfPassing: 0, programType: 'Undergraduate',
                 specialRoles: [], phoneNumber: '', uid: user.uid, gender: 'Unknown',
             });
-             toast({ variant: "destructive", title: "Profile Error", description: "Could not load your profile data." });
+             toast({ variant: "destructive", title: "Profile Error", description: `Could not load your profile data. ${error.message}` });
         } finally {
           setLoadingData(false);
         }
@@ -148,6 +124,7 @@ export default function Dashboard() {
   }, [user, toast]);
 
 
+  // --- Handle Logout ---
   const handleLogout = async () => {
     try {
       await signOut(auth);
@@ -162,14 +139,21 @@ export default function Dashboard() {
   const isGuest = user?.email === 'guest@iiitbhopal.ac.in';
 
 
+  // --- Render Content based on Active Section ---
   const renderContent = () => {
      // Show loading spinner while fetching user or student data
      if (loadingData) {
         return <LoadingSpinner />;
      }
 
+     // Redirect to login if not loading and no user (this should ideally be caught by page.tsx, but good safeguard)
+     if (!user) {
+        router.push('/login'); // Redirect if somehow user is null after loading
+        return <LoadingSpinner />; // Show spinner during redirect
+     }
+
       // Handle case where profile data failed to load for a non-guest user
-      if (!isGuest && user && !studentData) {
+      if (!isGuest && !studentData) {
          return (
              <div className="p-4 text-center text-red-500">
                  Failed to load profile data. Please try refreshing the page or contact support.
@@ -182,15 +166,17 @@ export default function Dashboard() {
          return <div className="text-center py-10 text-xl font-semibold">Homepage Placeholder - Content Coming Soon!</div>;
        case 'posts':
          // Pass necessary props to PostsFeed
-         return <PostsFeed isGuest={isGuest} studentData={studentData} />;
+         return <PostsFeed setActiveSection={setActiveSection} isGuest={isGuest} studentData={studentData} />;
        case 'create-post':
          return isGuest ? (
              <p className="p-4 text-center">Guests cannot create posts.</p>
          ) : (
+             // Redirect back to posts feed if trying to access create-post directly?
+             // Or just render the form directly if that's intended.
              <CreatePostForm /> // Render the form component
          );
        case 'lost-found':
-         // Pass user and studentData to LostAndFoundFeed
+         // Replace placeholder with the actual LostAndFoundFeed component
          return <LostAndFoundFeed user={user} studentData={studentData} />;
        case 'events':
           return <EventsFeed user={user} studentData={studentData} />;
@@ -213,21 +199,23 @@ export default function Dashboard() {
              <UserFavorites user={user} studentData={studentData} />
           );
        default:
-          // Default back to posts if section is unknown
-          return <PostsFeed isGuest={isGuest} studentData={studentData}/>;
+          // Default back to home if section is unknown
+          return <div className="text-center py-10 text-xl font-semibold">Homepage Placeholder - Content Coming Soon!</div>;
     }
   };
 
    const greeting = studentData ? `${getGreeting()}, ${studentData.name}` : getGreeting();
    const initials = studentData ? getInitials(studentData.name) : 'G';
 
-  // Ensure structure and syntax are correct before the return statement
+  // --- Main Component Return ---
+  // The structure seems correct, focusing on ensuring all imports and components are standard
   return (
     <SidebarProvider>
       <Sidebar>
         <SidebarHeader className="p-4 items-center">
            <div className="flex items-center gap-3">
              <Avatar className="h-10 w-10">
+               {/* Optionally add AvatarImage if you store profile picture URLs */}
                <AvatarFallback>{initials}</AvatarFallback>
              </Avatar>
               <div>
@@ -238,15 +226,18 @@ export default function Dashboard() {
         </SidebarHeader>
         <SidebarContent className="p-2">
             <SidebarMenu>
+                 {/* Home Button */}
                  <SidebarMenuItem>
                       <SidebarMenuButton onClick={() => setActiveSection('home')} isActive={activeSection === 'home'} tooltip="Home">
                          <Home />
                          <span>Home</span>
                       </SidebarMenuButton>
                  </SidebarMenuItem>
+                 {/* Posts Feed Button */}
                  <SidebarMenuItem>
                       <SidebarMenuButton
                         onClick={() => setActiveSection('posts')}
+                        // Keep active if viewing posts, creating post, your posts, or favorites
                         isActive={['posts', 'create-post', 'your-posts', 'your-favorites'].includes(activeSection)}
                         tooltip="Posts Feed"
                       >
@@ -254,6 +245,7 @@ export default function Dashboard() {
                          <span>Posts</span>
                       </SidebarMenuButton>
                  </SidebarMenuItem>
+                 {/* Lost & Found Button */}
                   <SidebarMenuItem>
                       <SidebarMenuButton
                         onClick={() => setActiveSection('lost-found')}
@@ -264,9 +256,11 @@ export default function Dashboard() {
                          <span>Lost & Found</span>
                       </SidebarMenuButton>
                    </SidebarMenuItem>
+                   {/* Events Button */}
                    <SidebarMenuItem>
                       <SidebarMenuButton
                         onClick={() => setActiveSection('events')}
+                        // Keep active if viewing events or user's events
                         isActive={['events', 'your-events'].includes(activeSection)}
                         tooltip="Events"
                       >
@@ -274,10 +268,11 @@ export default function Dashboard() {
                           <span>Events</span>
                       </SidebarMenuButton>
                    </SidebarMenuItem>
-                  {/* Add other menu items here if needed */}
+                  {/* Add other primary navigation items here if needed */}
              </SidebarMenu>
         </SidebarContent>
         <SidebarFooter className="p-2">
+            {/* Logout Button */}
             <Button variant="ghost" className="w-full justify-start gap-2 text-sidebar-foreground/80 hover:text-sidebar-foreground" onClick={handleLogout}>
               <LogOut className="h-4 w-4" />
               <span>Logout</span>
@@ -286,15 +281,20 @@ export default function Dashboard() {
       </Sidebar>
 
       <SidebarInset>
+         {/* Header inside the main content area */}
          <header className="sticky top-0 z-10 flex h-14 items-center justify-between border-b bg-background px-4 sm:justify-end">
-           <div className="flex items-center gap-2 sm:hidden"> {/* Show trigger and greeting on small screens */}
+           {/* Mobile: Trigger + Greeting */}
+           <div className="flex items-center gap-2 sm:hidden">
              <SidebarTrigger />
              <h1 className="text-lg font-semibold">{greeting}</h1>
            </div>
-            <div className="hidden sm:flex items-center gap-4"> {/* Show only greeting on larger screens */}
+           {/* Desktop: Greeting only */}
+            <div className="hidden sm:flex items-center gap-4">
                 <h1 className="text-lg font-semibold">{greeting}</h1>
+                {/* Optionally add other header elements for desktop here */}
             </div>
          </header>
+        {/* Main Content Area */}
         <main className="flex-1 p-4 md:p-6 lg:p-8 overflow-auto">
            {renderContent()}
         </main>
