@@ -54,12 +54,16 @@ export interface Post {
   title: string;
   body: string;
   imageUrls?: string[]; // Optional: URLs of images in Firebase Storage
-  timestamp: Timestamp; // Firestore Timestamp
+  timestamp: Timestamp; // Firestore Timestamp for creation
+  lastEdited?: Timestamp; // Optional: Firestore Timestamp for last edit
   upvotesCount: number;
   downvotesCount: number;
   hotScore: number; // For 'Hot' sorting, needs to be calculated/updated
   tags: string[]; // Includes authorName, scholarNumber, branch, yearOfPassing, gender
   visibility: VisibilitySettings;
+  // These fields are added client-side after fetching votes/favorites
+  userVote?: 'up' | 'down' | null; // Vote status for the current user
+  isFavorite?: boolean; // Favorite status for the current user
 }
 
 export interface PostVote {
@@ -134,11 +138,3 @@ export interface EventFavorite {
   userId: string; // UID of the user who favorited
   eventId: string;
 }
-
-// Type for storing user data fetched from Firestore along with Auth data
-// Using StudentProfile as the primary type for application logic after data fetch
-// export interface AppUser extends StudentProfile {
-//     // Inherits all fields from StudentProfile
-//     // Add any additional combined fields if necessary
-// }
-

@@ -1,77 +1,86 @@
 import React, { useState, useEffect } from 'react';
-import { Post } from './posts-feed'; // Adjust import path if necessary
+import type { Post } from './posts-feed'; // Adjust import path if necessary
 import { handleVote, handleFavorite } from '@/lib/postActions'; // Import actions
 import { useAuth } from '@/hooks/use-auth';
 import { formatDistanceToNow } from 'date-fns';
-import { ThumbsUp, ThumbsDown, Star, Loader2 } from 'lucide-react'; // Use lucide icons, add Loader2
+import { ThumbsUp, ThumbsDown, Star, Loader2, Trash2, Edit } from 'lucide-react'; // Use lucide icons, add Loader2, Trash2, Edit
 import { useToast } from '@/hooks/use-toast'; // Import useToast
 import { Button } from '@/components/ui/button'; // Use Button component for consistency
 import { cn } from '@/lib/utils'; // Import cn for conditional classes
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog"; // Import Alert Dialog
 
 interface PostCardProps {
     post: Post;
-    // Optional callback if PostsFeed needs immediate notification of changes
-    // onUpdatePost?: (postId: string, updates: Partial<Post>) => void;
+    // Optional flags/callbacks for user-specific actions
+    showActions?: boolean; // Flag to show Edit/Delete buttons
+    onDelete?: (postId: string) => Promise<void>;
+    onEdit?: (post: Post) => void; // Pass the full post object for editing
 }
 
-export const PostCard = React.forwardRef<HTMLDivElement, PostCardProps>(({ post /*, onUpdatePost*/ }, ref) => {
+export const PostCard = React.forwardRef<HTMLDivElement, PostCardProps>(({ post, showActions = false, onDelete, onEdit }, ref) => {
     const { user } = useAuth();
     const { toast } = useToast();
 
     // --- Local State for Optimistic Updates ---
-    // Initialize state directly from the post prop
     const [currentUpvotes, setCurrentUpvotes] = useState(post.upvotesCount);
     const [currentDownvotes, setCurrentDownvotes] = useState(post.downvotesCount);
-    const [currentUserVote, setCurrentUserVote] = useState<'up' | 'down' | null>(post.userVote || null);
-    const [isFavorited, setIsFavorited] = useState(post.isFavorite || false);
-    const [isVoting, setIsVoting] = useState(false); // Prevent rapid clicks on vote
-    const [isFavoriting, setIsFavoriting] = useState(false); // Prevent rapid clicks on favorite
+    const [currentUserVote, setCurrentUserVote] = useState<'up' | 'down' | null>(null); // Initialize to null
+    const [isFavorited, setIsFavorited] = useState(false); // Initialize to false
+    const [isVoting, setIsVoting] = useState(false);
+    const [isFavoriting, setIsFavoriting] = useState(false);
+    const [isDeleting, setIsDeleting] = useState(false); // State for delete operation
 
-    // console.log(`[PostCard] Post ID: ${post.id}, Initial Status - Vote: ${post.userVote}, Favorite: ${post.isFavorite}`); // Keep for debugging if needed
 
-
-    // Effect to update local state if the post prop changes externally (e.g., on a feed refresh)
+    // Effect to fetch initial vote/favorite status for the current user
      useEffect(() => {
+        // Set initial local state based on props
          setCurrentUpvotes(post.upvotesCount);
          setCurrentDownvotes(post.downvotesCount);
-         setCurrentUserVote(post.userVote || null);
-         setIsFavorited(post.isFavorite || false);
-     }, [post.upvotesCount, post.downvotesCount, post.userVote, post.isFavorite]); // More specific dependencies
+         setCurrentUserVote(post.userVote || null); // Use the prop value if available
+         setIsFavorited(post.isFavorite || false); // Use the prop value if available
+         // console.log(`[PostCard Effect Init - ${post.id}] Initial state set: Vote=${post.userVote}, Fav=${post.isFavorite}`);
+     }, [post.id, post.upvotesCount, post.downvotesCount, post.userVote, post.isFavorite]); // Depend on all relevant props
 
 
     const onVote = async (voteType: 'up' | 'down') => {
-        if (!user || isVoting || isFavoriting) return; // Prevent action if not logged in or already processing
+        if (!user || isVoting || isFavoriting || isDeleting) return;
         setIsVoting(true);
 
-        // Store previous state for potential rollback
         const previousVote = currentUserVote;
         const previousUpvotes = currentUpvotes;
         const previousDownvotes = currentDownvotes;
 
-        // --- Optimistic Update ---
         let optimisticUpvotes = currentUpvotes;
         let optimisticDownvotes = currentDownvotes;
         let optimisticUserVote: 'up' | 'down' | null = currentUserVote;
 
         if (voteType === 'up') {
-            if (currentUserVote === 'up') { // Removing upvote
+            if (currentUserVote === 'up') {
                 optimisticUpvotes = Math.max(0, currentUpvotes - 1);
                 optimisticUserVote = null;
-            } else { // Adding or switching to upvote
+            } else {
                 optimisticUpvotes = currentUpvotes + 1;
-                // Decrement downvotes only if switching from downvote
                 if (currentUserVote === 'down') {
                     optimisticDownvotes = Math.max(0, currentDownvotes - 1);
                 }
                 optimisticUserVote = 'up';
             }
-        } else { // voteType === 'down'
-            if (currentUserVote === 'down') { // Removing downvote
+        } else {
+            if (currentUserVote === 'down') {
                 optimisticDownvotes = Math.max(0, currentDownvotes - 1);
                 optimisticUserVote = null;
-            } else { // Adding or switching to downvote
+            } else {
                 optimisticDownvotes = currentDownvotes + 1;
-                // Decrement upvotes only if switching from upvote
                 if (currentUserVote === 'up') {
                      optimisticUpvotes = Math.max(0, currentUpvotes - 1);
                  }
@@ -79,22 +88,15 @@ export const PostCard = React.forwardRef<HTMLDivElement, PostCardProps>(({ post 
             }
         }
 
-
-        // Apply optimistic updates to local state
         setCurrentUpvotes(optimisticUpvotes);
         setCurrentDownvotes(optimisticDownvotes);
         setCurrentUserVote(optimisticUserVote);
 
-        // --- Call Firestore Action ---
         try {
             await handleVote(user.uid, post.id, voteType);
-            // Success - state is already updated optimistically
-             console.log("Vote successful, optimistic state applied:", { up: optimisticUpvotes, down: optimisticDownvotes, vote: optimisticUserVote });
-            // Optional: Call onUpdatePost if needed
-            // onUpdatePost?.(post.id, { upvotesCount: optimisticUpvotes, downvotesCount: optimisticDownvotes, userVote: optimisticUserVote });
+             console.log("[PostCard] Vote successful, optimistic state applied.");
         } catch (err: any) {
             console.error("Vote failed:", err);
-            // --- Rollback on Error ---
             setCurrentUpvotes(previousUpvotes);
             setCurrentDownvotes(previousDownvotes);
             setCurrentUserVote(previousVote);
@@ -104,65 +106,80 @@ export const PostCard = React.forwardRef<HTMLDivElement, PostCardProps>(({ post 
                 description: err.message || "Could not update vote.",
             });
         } finally {
-            setIsVoting(false); // Re-enable button
+            setIsVoting(false);
         }
     };
 
     const onFavorite = async () => {
-        if (!user || isFavoriting || isVoting) return; // Prevent action if not logged in or already processing
+        if (!user || isFavoriting || isVoting || isDeleting) return;
         setIsFavoriting(true);
 
-        // Store previous state for potential rollback
         const previousFavoriteStatus = isFavorited;
-
-        // --- Optimistic Update ---
         const optimisticFavoriteStatus = !isFavorited;
         setIsFavorited(optimisticFavoriteStatus);
 
-        // Show optimistic toast message
         toast({
             title: optimisticFavoriteStatus ? "Post Favorited" : "Post Unfavorited",
             description: optimisticFavoriteStatus ? "Added to your favorites." : "Removed from your favorites.",
         });
 
-        // --- Call Firestore Action ---
         try {
-            // handleFavorite returns the actual new status, but we primarily rely on optimistic update
             const actualNewStatus = await handleFavorite(user.uid, post.id);
-            // Optional: Correct state if optimistic was wrong (rare)
-            // This can happen if the Firestore operation fails after the optimistic update
              if (actualNewStatus !== optimisticFavoriteStatus) {
-                 console.warn("Optimistic favorite status diverged from actual status. Correcting state.");
+                 console.warn("Optimistic favorite status diverged. Correcting state.");
                  setIsFavorited(actualNewStatus);
-                 // Update toast if status was corrected back
                  if (actualNewStatus === previousFavoriteStatus) {
                      toast({
-                         title: actualNewStatus ? "Post Favorited (Corrected)" : "Post Unfavorited (Corrected)",
-                         description: "Status updated based on server response.",
+                         title: actualNewStatus ? "Favorited (Corrected)" : "Unfavorited (Corrected)",
+                         description: "Status updated from server.",
                      });
                  }
              }
-            console.log("Favorite successful, optimistic state applied:", { favorited: optimisticFavoriteStatus });
-            // Optional: Call onUpdatePost if needed
-            // onUpdatePost?.(post.id, { isFavorite: actualNewStatus });
+            console.log("[PostCard] Favorite action successful.");
         } catch (err: any) {
             console.error("Favorite action failed:", err);
-            // --- Rollback on Error ---
-            setIsFavorited(previousFavoriteStatus);
+            setIsFavorited(previousFavoriteStatus); // Rollback
             toast({
                 variant: "destructive",
                 title: "Favorite Failed",
                 description: err.message || "Could not update favorite status.",
             });
         } finally {
-             setIsFavoriting(false); // Re-enable button
+             setIsFavoriting(false);
         }
     };
 
-    // Format timestamp
+    const handleDelete = async () => {
+        if (!user || !onDelete || isDeleting || isVoting || isFavoriting) return;
+        setIsDeleting(true);
+        try {
+            await onDelete(post.id);
+            toast({
+                title: "Post Deleted",
+                description: "The post has been successfully deleted.",
+            });
+            // The parent component (UserPosts) will handle removing the card from the list
+        } catch (err: any) {
+            console.error("Delete failed:", err);
+            toast({
+                variant: "destructive",
+                title: "Delete Failed",
+                description: err.message || "Could not delete the post.",
+            });
+            setIsDeleting(false); // Only reset if delete failed
+        }
+        // Don't setIsDeleting(false) on success, as the component might unmount
+    };
+
+    const handleEdit = () => {
+        if (!user || !onEdit || isDeleting || isVoting || isFavoriting) return;
+        onEdit(post); // Pass the post data to the parent for editing
+        // Parent component (UserPosts) will handle opening the edit modal/form
+    };
+
+
     const formattedTimestamp = post.timestamp ? formatDistanceToNow(post.timestamp.toDate(), { addSuffix: true }) : 'Date unknown';
 
-    // --- Determine button styles/icons based on local state ---
     const baseButtonClass = "flex items-center space-x-1.5 p-1.5 rounded-md transition-colors duration-150 disabled:opacity-50 disabled:cursor-not-allowed";
 
     const upvoteButtonClass = cn(
@@ -181,7 +198,7 @@ export const PostCard = React.forwardRef<HTMLDivElement, PostCardProps>(({ post 
         isFavorited ? 'text-accent dark:text-blue-400 font-semibold' : 'text-gray-600 dark:text-gray-400 hover:text-accent dark:hover:text-blue-300'
     );
 
-    const isLoading = isVoting || isFavoriting;
+    const isLoading = isVoting || isFavoriting || isDeleting; // Combined loading state
 
     return (
         <div ref={ref} className="border p-4 rounded-lg shadow mb-4 bg-card text-card-foreground transition-shadow duration-200 hover:shadow-md">
@@ -192,7 +209,59 @@ export const PostCard = React.forwardRef<HTMLDivElement, PostCardProps>(({ post 
                          By {post.authorName || 'Unknown Author'} • {formattedTimestamp}
                     </p>
                  </div>
-                {/* Placeholder for potential actions like delete/edit for the author */}
+                 {/* --- Edit/Delete Buttons --- */}
+                 {showActions && user && user.uid === post.authorId && (
+                     <div className="flex space-x-2">
+                         <Button
+                             variant="ghost"
+                             size="icon"
+                             className="h-8 w-8 text-muted-foreground hover:text-foreground"
+                             onClick={handleEdit}
+                             disabled={isLoading}
+                             title="Edit Post"
+                         >
+                             <Edit className="h-4 w-4" />
+                             <span className="sr-only">Edit</span>
+                         </Button>
+                         <AlertDialog>
+                            <AlertDialogTrigger asChild>
+                                 <Button
+                                     variant="ghost"
+                                     size="icon"
+                                     className="h-8 w-8 text-red-500 hover:bg-red-100 dark:hover:bg-red-900/50"
+                                     disabled={isLoading}
+                                     title="Delete Post"
+                                 >
+                                    {isDeleting ? <Loader2 className="h-4 w-4 animate-spin"/> : <Trash2 className="h-4 w-4" />}
+                                     <span className="sr-only">Delete</span>
+                                 </Button>
+                            </AlertDialogTrigger>
+                            <AlertDialogContent>
+                                <AlertDialogHeader>
+                                <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+                                <AlertDialogDescription>
+                                    This action cannot be undone. This will permanently delete your post
+                                    and remove its data from our servers.
+                                </AlertDialogDescription>
+                                </AlertDialogHeader>
+                                <AlertDialogFooter>
+                                <AlertDialogCancel disabled={isDeleting}>Cancel</AlertDialogCancel>
+                                <AlertDialogAction
+                                    onClick={handleDelete}
+                                    disabled={isDeleting}
+                                    className="bg-destructive hover:bg-destructive/90"
+                                >
+                                    {isDeleting ? (
+                                        <>
+                                        <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Deleting...
+                                        </>
+                                    ) : "Delete"}
+                                </AlertDialogAction>
+                                </AlertDialogFooter>
+                            </AlertDialogContent>
+                        </AlertDialog>
+                     </div>
+                 )}
              </div>
 
              <p className="mt-2 mb-4 text-sm leading-relaxed">{post.body}</p>
@@ -200,28 +269,25 @@ export const PostCard = React.forwardRef<HTMLDivElement, PostCardProps>(({ post 
              {post.imageUrls && post.imageUrls.length > 0 && (
                  <div className="mt-4 mb-4 grid grid-cols-2 sm:grid-cols-3 gap-2">
                      {post.imageUrls.map((url, index) => (
-                         // --- Wrap image in <a> tag ---
                          <a key={index} href={url} target="_blank" rel="noopener noreferrer" className="block">
                              <img
                                 src={url}
                                 alt={`Post image ${index + 1}`}
                                 className="w-full h-32 sm:h-40 object-cover rounded-md border border-border cursor-pointer"
-                                loading="lazy" // Add lazy loading
+                                loading="lazy"
                              />
                          </a>
                      ))}
                  </div>
              )}
 
-            {/* --- Adjusted button container layout --- */}
-            <div className="mt-4 pt-3 border-t border-border flex items-center justify-between"> {/* Use justify-between */}
-                 <div className="flex items-center space-x-4"> {/* Group vote buttons */}
-                     {/* Upvote Button */}
+            <div className="mt-4 pt-3 border-t border-border flex items-center justify-between">
+                 <div className="flex items-center space-x-4">
                     <button
                         onClick={() => onVote('up')}
                         className={upvoteButtonClass}
                         disabled={!user || isLoading}
-                        aria-pressed={currentUserVote === 'up'} // Accessibility
+                        aria-pressed={currentUserVote === 'up'}
                         aria-label="Upvote"
                         title="Upvote"
                     >
@@ -229,12 +295,11 @@ export const PostCard = React.forwardRef<HTMLDivElement, PostCardProps>(({ post 
                         <span className="text-sm tabular-nums">{currentUpvotes}</span>
                     </button>
 
-                     {/* Downvote Button */}
                     <button
                         onClick={() => onVote('down')}
                         className={downvoteButtonClass}
                         disabled={!user || isLoading}
-                        aria-pressed={currentUserVote === 'down'} // Accessibility
+                        aria-pressed={currentUserVote === 'down'}
                         aria-label="Downvote"
                         title="Downvote"
                     >
@@ -243,20 +308,17 @@ export const PostCard = React.forwardRef<HTMLDivElement, PostCardProps>(({ post 
                     </button>
                  </div>
 
-                 {/* Favorite Button - Moved to the right */}
                 <button
                     onClick={onFavorite}
                     className={favoriteButtonClass}
                     disabled={!user || isLoading}
-                    aria-pressed={isFavorited} // Accessibility
+                    aria-pressed={isFavorited}
                     aria-label={isFavorited ? "Unfavorite" : "Favorite"}
                     title={isFavorited ? "Remove from Favorites" : "Add to Favorites"}
                 >
                      {isFavoriting ? <Loader2 className="h-4 w-4 animate-spin"/> : <Star className={`h-5 w-5 ${isFavorited ? 'fill-current' : ''}`} />}
-                    <span className="text-sm">Favorite</span>
+                    <span className="text-sm hidden sm:inline">Favorite</span>
                 </button>
-
-                {/* TODO: Implement Share, Comment count, etc. */}
             </div>
         </div>
     );

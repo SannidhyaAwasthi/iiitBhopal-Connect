@@ -7,7 +7,7 @@ import { db } from '@/config/firebase';
 import { SidebarProvider, Sidebar, SidebarHeader, SidebarContent, SidebarFooter, SidebarTrigger, SidebarInset, SidebarMenu, SidebarMenuItem, SidebarMenuButton } from '@/components/ui/sidebar';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
-import { Home, FileText, Search, Calendar, Star, LogOut, User as UserIcon } from 'lucide-react'; // Renamed User to UserIcon
+import { Home, FileText, Search, Calendar, LogOut, User as UserIcon } from 'lucide-react'; // Removed Star, User as UserIcon
 import { signOut } from 'firebase/auth';
 import { auth } from '@/config/firebase';
 import { useRouter } from 'next/navigation';
@@ -15,12 +15,12 @@ import { useToast } from '@/hooks/use-toast';
 import PostsFeed from './posts-feed';
 import LostAndFoundFeed from './lost-found-feed';
 import EventsFeed from './events-feed';
-import UserPosts from './user-posts'; // This will render the user's specific posts
-import UserEvents from './user-events'; // This will render the user's specific events
-import UserFavorites from './user-favorites'; // Import UserFavorites
+import UserPosts from './user-posts'; // Import UserPosts
+import UserEvents from './user-events';
+import UserFavorites from './user-favorites';
 import LoadingSpinner from '@/components/loading-spinner';
 import type { StudentProfile } from '@/types'; // Import StudentProfile
-import { CreatePostForm } from './CreatePostForm';
+import { CreatePostForm } from './CreatePostForm'; // Keep for the 'create-post' section
 
 const getGreeting = () => {
   const hour = new Date().getHours();
@@ -184,19 +184,20 @@ export default function Dashboard() {
      if (loadingData) {
         return <LoadingSpinner />;
      }
-     if (!isGuest && user && !studentData && activeSection !== 'home') {
-         return (
-            <div className="p-4 text-center text-red-500">
-               Failed to load profile data. Cannot display content.
-            </div>
-         );
-     }
+     // This check might be overly restrictive if guests should see some content
+     // if (!isGuest && user && !studentData && activeSection !== 'home') {
+     //     return (
+     //        <div className="p-4 text-center text-red-500">
+     //           Failed to load profile data. Cannot display content.
+     //        </div>
+     //     );
+     // }
 
     switch (activeSection) {
-       case 'home': // Keep home separate
+       case 'home':
          return <div className="text-center py-10 text-xl font-semibold">Homepage Placeholder - Coming Soon!</div>;
        case 'posts':
-         // Pass necessary props to PostsFeed
+         // Pass necessary props to PostsFeed, including setActiveSection
          return <PostsFeed setActiveSection={setActiveSection} isGuest={isGuest} studentData={studentData} />;
        case 'create-post':
          return isGuest ? (
@@ -208,10 +209,11 @@ export default function Dashboard() {
          return <LostAndFoundFeed user={user} studentData={studentData} />;
        case 'events':
           return <EventsFeed user={user} studentData={studentData} />;
-       case 'your-posts': // Navigate to this section to show user's posts
+       case 'your-posts':
          return isGuest ? (
              <p className="p-4 text-center">Guests do not have posts.</p>
          ) : (
+             // Pass user and studentData to UserPosts
              <UserPosts user={user} studentData={studentData} />
          );
        case 'your-events':
@@ -220,7 +222,7 @@ export default function Dashboard() {
           ) : (
              <UserEvents user={user} studentData={studentData} />
           );
-       case 'your-favorites': // Added case for favorites
+       case 'your-favorites':
           return isGuest ? (
              <p className="p-4 text-center">Guests do not have favorites.</p>
           ) : (
@@ -252,18 +254,16 @@ export default function Dashboard() {
         </SidebarHeader>
         <SidebarContent className="p-2">
             <SidebarMenu>
-                 {/* Home Button */}
                  <SidebarMenuItem>
                       <SidebarMenuButton onClick={() => setActiveSection('home')} isActive={activeSection === 'home'} tooltip="Home">
                          <Home />
                          <span>Home</span>
                       </SidebarMenuButton>
                  </SidebarMenuItem>
-                 {/* Posts Button (Main feed, includes Create, Your Posts, Favorites navigation) */}
                  <SidebarMenuItem>
                       <SidebarMenuButton
                         onClick={() => setActiveSection('posts')}
-                        // Consider 'posts', 'create-post', 'your-posts', 'your-favorites' active states for the 'Posts' menu item
+                        // Keep active if viewing main posts, create post, user's posts, or favorites
                         isActive={['posts', 'create-post', 'your-posts', 'your-favorites'].includes(activeSection)}
                         tooltip="Posts"
                       >
@@ -271,22 +271,20 @@ export default function Dashboard() {
                          <span>Posts</span>
                       </SidebarMenuButton>
                  </SidebarMenuItem>
-                  {/* Lost & Found Button */}
                   <SidebarMenuItem>
                       <SidebarMenuButton
                         onClick={() => setActiveSection('lost-found')}
-                        isActive={activeSection === 'lost-found'}
+                        isActive={activeSection === 'lost-found'} // Add your-lost-found if needed
                         tooltip="Lost & Found"
                       >
                          <Search />
                          <span>Lost & Found</span>
                       </SidebarMenuButton>
                    </SidebarMenuItem>
-                   {/* Events Button */}
                    <SidebarMenuItem>
                       <SidebarMenuButton
                         onClick={() => setActiveSection('events')}
-                        isActive={['events', 'your-events'].includes(activeSection)} // Consider 'your-events' active for 'Events'
+                        isActive={['events', 'your-events'].includes(activeSection)}
                         tooltip="Events"
                       >
                           <Calendar />
