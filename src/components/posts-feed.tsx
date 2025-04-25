@@ -1,4 +1,3 @@
-import type { User } from 'firebase/auth';
 import { FC, useState, useEffect, useCallback, useRef } from 'react';
 import { db } from '@/config/firebase';
 import {
@@ -20,48 +19,30 @@ import { PostCard } from './PostCard'; // Assume you have a PostCard component
 import LoadingSpinner from './loading-spinner'; // Corrected import for default export
 import { useAuth } from '@/hooks/use-auth'; // Assuming useAuth hook
 import { getPostsVoteStatus, getFavoritePostIds } from '@/lib/postActions'; // Import helper functions
+import type { Student, Post as PostType } from '@/types'; // Import types
 
 
 // Define Post type based on prompt's schema (adjust if needed to match your types/index.ts)
 // Ensure this matches the Post interface in PostCard.tsx if defined there
-export interface Post {
-    id: string; // Document ID
-    authorId: string;
-    authorName: string;
-    title: string;
-    body: string;
-    imageUrls?: string[];
-    timestamp: Timestamp; // Use Firestore Timestamp type
-    upvotesCount: number;
-    downvotesCount: number;
-    hotScore?: number; // Optional based on usage
-    tags: string[];
-    visibility: {
-        branches: string[];
-        yearsOfPassing: number[];
-        genders: string[];
-    };
+// Using imported PostType from types/index.ts
+export type Post = PostType & {
     // Add userVote and isFavorite status for UI state (will be added after fetching)
     userVote?: 'up' | 'down' | null;
     isFavorite?: boolean;
-}
-
-// Assume Student type from your prompt's description (adjust if needed to match your types/index.ts)
-interface StudentProfile {
-    branch: string;
-    yearOfPassing: number;
-    gender: string; // Assuming gender exists in the profile
-    // Add other fields if needed
-}
+};
 
 
+// Props are no longer needed as user/student data is fetched internally
 interface PostsFeedProps {
-   // No props needed if fetching user/student data within the component
+   // No props needed
 }
 
 type SortOption = 'recent' | 'popular' | 'hot';
 
 const POSTS_PER_PAGE = 10;
+
+// Now use the imported Student type directly
+type StudentProfile = Student;
 
 const PostsFeed: FC<PostsFeedProps> = () => {
     const { user } = useAuth(); // Get user from auth context/hook
@@ -80,25 +61,64 @@ const PostsFeed: FC<PostsFeedProps> = () => {
      useEffect(() => {
         const fetchStudentData = async () => {
             if (user) {
+                 setIsLoading(true); // Set loading true when fetching profile starts
                 try {
-                    const studentDocRef = doc(db, 'students-by-uid', user.uid);
-                    const studentSnap = await getDoc(studentDocRef);
-                    if (studentSnap.exists()) {
-                        setStudentData(studentSnap.data() as StudentProfile);
+                    // 1. Get scholar number from UID mapping
+                    const uidMapRef = doc(db, 'students-by-uid', user.uid);
+                    const uidMapSnap = await getDoc(uidMapRef);
+
+                    if (uidMapSnap.exists()) {
+                        const scholarNumber = uidMapSnap.data()?.scholarNumber;
+                        if (scholarNumber) {
+                            // 2. Fetch full student data using scholar number
+                            const studentDocRef = doc(db, 'students', scholarNumber);
+                            const studentDocSnap = await getDoc(studentDocRef);
+
+                            if (studentDocSnap.exists()) {
+                                setStudentData(studentDocSnap.data() as StudentProfile);
+                                // Reset posts when profile is loaded successfully
+                                setPosts([]);
+                                setLastVisible(null);
+                                setHasMore(true);
+                                setError(null);
+                            } else {
+                                throw new Error(`Student profile document not found for scholar number: ${scholarNumber}`);
+                            }
+                        } else {
+                             throw new Error(`Scholar number missing in UID map for user: ${user.uid}`);
+                        }
                     } else {
-                        // This case should ideally not happen for logged-in users with complete profiles,
-                        // but handle defensively.
-                        setError("Student profile not found. Cannot filter posts based on your profile.");
-                        setStudentData(null);
-                         setPosts([]); // Clear posts if profile is missing
-                         setHasMore(false); // No posts to load without profile filtering
+                        // Handle guest user specifically
+                         if (user.email === 'guest@iiitbhopal.ac.in') {
+                            setStudentData({
+                                name: "Guest",
+                                scholarNumber: "guest",
+                                email: "guest@iiitbhopal.ac.in",
+                                branch: 'Unknown',
+                                yearOfPassing: 0,
+                                programType: 'Undergraduate',
+                                specialRoles: [],
+                                phoneNumber: '',
+                                uid: user.uid,
+                                gender: 'Prefer not to say', // Provide default gender for guest
+                            } as StudentProfile);
+                            setPosts([]);
+                            setLastVisible(null);
+                            setHasMore(true);
+                            setError(null);
+                         } else {
+                            throw new Error(`Student UID map document not found for user: ${user.uid}`);
+                         }
                     }
+
                 } catch (err: any) {
                     console.error("Error fetching student data:", err);
                     setError(err.message || "Failed to load student profile.");
                     setStudentData(null);
                     setPosts([]); // Clear posts on error
-                     setHasMore(false); // No posts to load on error
+                    setHasMore(false); // No posts to load on error
+                } finally {
+                     // setIsLoading(false); // Loading stops when fetchPosts starts or in error case
                 }
             } else {
                 // Clear state if user logs out
@@ -118,16 +138,32 @@ const PostsFeed: FC<PostsFeedProps> = () => {
     const fetchPosts = useCallback(async (loadMore = false) => {
         // Only fetch if user and studentData are available and we potentially have more posts
         // Also prevent duplicate fetches
-        if (!user || !studentData || (!loadMore && isLoading) || (loadMore && isLoadingMore) || (loadMore && !hasMore && lastVisible !== null)) {
-             return;
+        // Guest can see all posts (no filtering applied)
+         if (!user || (!studentData && user.email !== 'guest@iiitbhopal.ac.in') || (!loadMore && isLoading) || (loadMore && isLoadingMore) || (loadMore && !hasMore)) {
+             // If loading profile, don't fetch posts yet
+             if (!studentData && !error && isLoading) return;
+             // If profile fetch failed, don't fetch posts
+             if (error) return;
+             // If already loading posts, don't fetch again
+             if ((!loadMore && isLoading) || (loadMore && isLoadingMore)) return;
+             // If no more posts, don't fetch
+             if (loadMore && !hasMore) return;
+             // If not logged in or profile loading failed for non-guest
+              if (!user || (!studentData && user.email !== 'guest@iiitbhopal.ac.in')) {
+                  console.log("FetchPosts skipped: User/StudentData not available or error occurred.");
+                  return;
+              }
          }
 
+         console.log(`Fetching posts (loadMore: ${loadMore}, sort: ${sortOption})`); // Log fetch action
+
+
         if (!loadMore) {
-            setIsLoading(true);
-            setPosts([]); // Reset posts on initial load or sort change
-            setLastVisible(null);
-            setHasMore(true); // Assume there are more initially
-            setError(null); // Clear previous errors
+            setIsLoading(true); // This will cover the profile loading spinner as well
+            // setPosts([]); // Reset posts is handled when studentData is set
+            // setLastVisible(null);
+            // setHasMore(true); // Assume there are more initially
+            // setError(null); // Clear previous errors
         } else {
             setIsLoadingMore(true);
         }
@@ -136,40 +172,10 @@ const PostsFeed: FC<PostsFeedProps> = () => {
             let q: Query<DocumentData> = collection(db, 'posts');
 
             // --- Visibility Filtering Strategy ---
-            // Firestore limitations make complex OR logic across different fields difficult in a single query.
-            // For the "empty array means all" combined with specific values, fetching and client-side filtering
-            // is a common approach, though less efficient for very large datasets.
+            // Apply filtering only if the user is NOT a guest
+            const isGuest = user?.email === 'guest@iiitbhopal.ac.in';
 
-            // We will construct queries based on the user's branch, year, and gender, and the 'all' case
-            // (empty arrays) and combine results. This is still complex with pagination.
-
-            // A more practical approach for this schema and typical usage might be to:
-            // 1. Query posts explicitly targeting the user's branch.
-            // 2. Query posts explicitly targeting the user's year of passing.
-            // 3. Query posts explicitly targeting the user's gender.
-            // 4. Query posts with empty visibility arrays (visible to all).
-            // Combine results, remove duplicates, and then apply sorting and pagination client-side.
-            // This quickly becomes inefficient with large numbers of posts.
-
-            // Alternative Strategy (Leveraging Indexes + Client Filter):
-            // Fetch posts ordered by the chosen sort key, applying a *single* primary filter
-            // that can use an index (e.g., filter by posts that *might* be visible based on branch or year),
-            // and then perform the full visibility check client-side.
-
-            // Let's try a strategy that queries for posts where the visibility array *contains* the user's branch
-            // OR where the visibility array is empty. This still likely requires separate queries or a different index strategy.
-
-            // A simplified approach for demonstration, focusing on the "empty array means all" case:
-            // Query for posts where visibility.branches is empty OR visibility.yearsOfPassing is empty OR visibility.genders is empty
-            // OR visibility.branches contains user's branch OR visibility.yearsOfPassing contains user's year OR visibility.genders contains user's gender.
-            // This complex OR logic is not directly possible in Firestore.
-
-            // Let's revert to fetching based on sort order and apply *all* visibility filters client-side.
-            // This means we fetch the 'latest' or 'most popular' N posts and then filter those N posts
-            // based on visibility. This is easier to implement but less scalable than server-side filtering.
-            // **Consider a Cloud Function or different schema for production if performance is critical.**
-
-             // Build base query with sorting
+            // Build base query with sorting
             if (sortOption === 'recent') {
                  q = query(q, orderBy('timestamp', 'desc'));
              } else if (sortOption === 'popular') {
@@ -194,7 +200,7 @@ const PostsFeed: FC<PostsFeedProps> = () => {
             const querySnapshot = await getDocs(q);
             const fetchedPosts = querySnapshot.docs.map(doc => ({
                 id: doc.id,
-                ...(doc.data() as Post), // Cast data to Post type
+                ...(doc.data() as PostType), // Cast data to imported PostType type initially
             }));
 
              // Determine if there are more posts to load (check if we got limitWithCheck documents)
@@ -202,15 +208,21 @@ const PostsFeed: FC<PostsFeedProps> = () => {
              // Take only POSTS_PER_PAGE for processing and display
              const postsToProcess = hasMoreResults ? fetchedPosts.slice(0, POSTS_PER_PAGE) : fetchedPosts;
 
-            // --- Client-Side Visibility Filtering ---
-            // Filter the fetched posts based on the user's profile and post visibility settings.
-            const visiblePosts = postsToProcess.filter(post => {
-                const isBranchVisible = post.visibility.branches.length === 0 || post.visibility.branches.includes(studentData.branch);
-                const isYearVisible = post.visibility.yearsOfPassing.length === 0 || post.visibility.yearsOfPassing.includes(studentData.yearOfPassing);
-                const isGenderVisible = post.visibility.genders.length === 0 || post.visibility.genders.includes(studentData.gender);
+            // --- Client-Side Visibility Filtering (only for non-guests) ---
+            let visiblePosts: PostType[];
+            if (!isGuest && studentData) {
+                visiblePosts = postsToProcess.filter(post => {
+                    const isBranchVisible = post.visibility.branches.length === 0 || post.visibility.branches.includes(studentData.branch);
+                    const isYearVisible = post.visibility.yearsOfPassing.length === 0 || post.visibility.yearsOfPassing.includes(studentData.yearOfPassing);
+                    // Use optional chaining for gender as it might not be present
+                    const isGenderVisible = post.visibility.genders.length === 0 || (studentData.gender && post.visibility.genders.includes(studentData.gender));
 
-                return isBranchVisible && isYearVisible && isGenderVisible;
-            });
+                    return isBranchVisible && isYearVisible && isGenderVisible;
+                });
+            } else {
+                 // Guests see all fetched posts
+                 visiblePosts = postsToProcess;
+            }
 
 
              // --- Fetch User's Vote and Favorite Status ---
@@ -238,63 +250,61 @@ const PostsFeed: FC<PostsFeedProps> = () => {
              setPosts(prevPosts => loadMore ? [...prevPosts, ...postsWithStatus] : postsWithStatus);
              // The last visible document for the next fetch is the last document from the *original* fetched batch (before client-side filtering)
              // if we fetched an extra one. If we didn't fetch an extra or no documents were returned, set to null.
-             setLastVisible(querySnapshot.docs.length > 0 && hasMoreResults ? querySnapshot.docs[POSTS_PER_PAGE] : null);
+             // Use querySnapshot.docs directly for reliable pagination marker
+              const newLastVisible = hasMoreResults ? querySnapshot.docs[POSTS_PER_PAGE - 1] : (querySnapshot.docs.length > 0 ? querySnapshot.docs[querySnapshot.docs.length - 1] : null);
+
+             setLastVisible(newLastVisible);
              setHasMore(hasMoreResults); // Set hasMore based on whether we got the extra document
 
         } catch (err: any) {
             console.error("Error fetching posts:", err);
             setError(err.message || 'Failed to load posts.');
-             setHasMore(false); // Stop loading more on error
+            setHasMore(false); // Stop loading more on error
              if (!loadMore) { // Clear posts only on initial load error
                   setPosts([]);
              }
         } finally {
-            setIsLoading(false);
+            setIsLoading(false); // Ensure loading stops after fetch attempt
             setIsLoadingMore(false);
         }
-    }, [user, studentData, sortOption, lastVisible, hasMore, isLoading, isLoadingMore]); // Added dependencies
+    }, [user, studentData, sortOption, lastVisible, hasMore, isLoading, isLoadingMore, error]); // Added 'error' to dependencies
 
 
-    // Initial fetch when user and studentData are available
+    // Initial fetch trigger: Call fetchPosts when studentData is loaded or sortOption changes
     useEffect(() => {
-        // Trigger initial fetch only when user and studentData are present
-        if (user && studentData) {
-            fetchPosts(false);
+        // Trigger initial fetch only when user and studentData are present (or user is guest)
+        // And only if not currently loading
+        if (user && (studentData || user.email === 'guest@iiitbhopal.ac.in') && !isLoading) {
+             // Reset and fetch on sort change or initial load
+             setPosts([]);
+             setLastVisible(null);
+             setHasMore(true);
+             setError(null);
+             fetchPosts(false); // Trigger initial fetch
         }
-        // The effect also handles clearing state when user logs out, as handled in the user effect above.
-         // Include fetchPosts in the dependency array now that it's memoized with useCallback
-    }, [user, studentData, sortOption, fetchPosts]); // Re-run when user, student data, sort changes, or fetchPosts changes (due to useCallback dependencies)
+         // This effect depends on studentData and sortOption to trigger refetch
+    }, [user, studentData, sortOption, fetchPosts]); // Dependency on fetchPosts needed
 
 
     // --- Infinite Scroll Logic ---
-    // Set up the IntersectionObserver to trigger fetching more posts
     const lastPostElementRef = useCallback(node => {
-        // Don't set up observer if we are loading, don't have more data, or no node is provided
         if (isLoading || isLoadingMore || !hasMore || !node) return;
-
-        // Disconnect previous observer if it exists
         if (observer.current) observer.current.disconnect();
 
-        // Create a new observer
         observer.current = new IntersectionObserver(entries => {
-            // If the last post element is intersecting and we have more posts to load
             if (entries[0].isIntersecting && hasMore && !isLoadingMore && !isLoading) {
+                console.log("Intersection observer triggered load more"); // Debug log
                 fetchPosts(true); // Load more posts
             }
         }, {
-            // Options for the observer
-            rootMargin: '0px 0px 200px 0px', // Trigger when 200px from the bottom of the viewport
-            threshold: 0.1 // Trigger when 10% of the element is visible
+            rootMargin: '0px 0px 200px 0px',
+            threshold: 0.1
         });
 
-        // Start observing the last post element
         if (node) observer.current.observe(node);
 
-        // Cleanup function for the observer: disconnect when the component unmounts or the ref changes
         return () => {
-            if (observer.current) {
-                observer.current.disconnect();
-            }
+            if (observer.current) observer.current.disconnect();
         };
     }, [isLoading, isLoadingMore, hasMore, fetchPosts]); // Dependencies for the ref callback
 
@@ -302,9 +312,7 @@ const PostsFeed: FC<PostsFeedProps> = () => {
     // Cleanup observer on component unmount
     useEffect(() => {
         return () => {
-            if (observer.current) {
-                observer.current.disconnect();
-            }
+            if (observer.current) observer.current.disconnect();
         };
     }, []); // Empty dependency array means this effect runs only on mount and unmount
 
@@ -313,14 +321,14 @@ const PostsFeed: FC<PostsFeedProps> = () => {
         return <div className="text-center py-10 text-gray-600 dark:text-gray-400">Please log in to see posts.</div>;
     }
 
-    // Show loading spinner while fetching initial student data or posts
-    if ((!studentData && !error && !isLoading) || (user && !studentData && isLoading)) {
+    // Show loading spinner while fetching initial student data or first batch of posts
+    if (isLoading && posts.length === 0) {
          return <div className="text-center py-10"><LoadingSpinner /> Loading profile and posts...</div>;
     }
 
-    // Handle the case where student data wasn't found after user is logged in
-    if (error && !studentData && user) {
-        return <p className="text-center py-10 text-red-500 dark:text-red-400">Error: {error}</p>;
+    // Handle the case where student data wasn't found after user is logged in (and not guest)
+    if (error && !studentData && user.email !== 'guest@iiitbhopal.ac.in') {
+        return <p className="text-center py-10 text-red-500 dark:text-red-400">Error loading profile: {error}</p>;
     }
 
 
@@ -332,7 +340,14 @@ const PostsFeed: FC<PostsFeedProps> = () => {
                 <select
                     id="sort-select"
                     value={sortOption}
-                    onChange={(e) => setSortOption(e.target.value as SortOption)}
+                    onChange={(e) => {
+                        setSortOption(e.target.value as SortOption);
+                        // Reset state for new sort fetch
+                        setPosts([]);
+                        setLastVisible(null);
+                        setHasMore(true);
+                        // Fetching will be triggered by the useEffect hook watching sortOption
+                    }}
                     className="border border-gray-300 rounded-md shadow-sm p-1 text-sm dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100"
                 >
                     <option value="recent">Most Recent</option>
@@ -341,13 +356,13 @@ const PostsFeed: FC<PostsFeedProps> = () => {
                 </select>
             </div>
 
-            {isLoading && !isLoadingMore && <div className="text-center py-10"><LoadingSpinner /></div>}
-            {error && <p className="text-center py-10 text-red-500 dark:text-red-400">Error: {error}</p>}
+            {/* {isLoading && !isLoadingMore && posts.length === 0 && <div className="text-center py-10"><LoadingSpinner /></div>} */}
+             {error && <p className="text-center py-4 text-red-500 dark:text-red-400">Error fetching posts: {error}</p>}
 
             <div className="posts-list space-y-4">
                 {posts.map((post, index) => {
                     // Attach ref to the last element for infinite scroll trigger
-                    if (posts.length === index + 1) {
+                    if (hasMore && index === posts.length - 1) {
                         return <PostCard ref={lastPostElementRef} key={post.id} post={post} />;
                     } else {
                         return <PostCard key={post.id} post={post} />;
@@ -357,9 +372,9 @@ const PostsFeed: FC<PostsFeedProps> = () => {
 
             {isLoadingMore && <div className="text-center py-5"><LoadingSpinner /> Loading more...</div>}
             {!isLoadingMore && !hasMore && posts.length > 0 && (
-                <p className="text-center py-5 text-gray-500 dark:text-gray-400">No more posts.</p>
+                <p className="text-center py-5 text-gray-500 dark:text-gray-400">-- End of Posts --</p>
             )}
-             {!isLoading && !isLoadingMore && posts.length === 0 && !error && ( // Show message if no posts loaded and no error
+             {!isLoading && !isLoadingMore && posts.length === 0 && !error && (
                  <p className="text-center py-10 text-gray-600 dark:text-gray-400">No posts found matching your criteria.</p>
              )}
         </div>

@@ -1,5 +1,8 @@
 import type { Timestamp } from 'firebase/firestore';
 
+// Define possible gender values explicitly
+export type Gender = 'Male' | 'Female' | 'Other' | 'Prefer not to say' | 'Unknown'; // Added Unknown as a fallback
+
 export interface Student {
   scholarNumber: string; // PK
   name: string;
@@ -11,30 +14,43 @@ export interface Student {
   phoneNumber: string;
   email: string;
   uid: string; // Firebase Auth User ID
-  gender: 'Male' | 'Female' | 'Other' | 'Prefer not to say'; // Assuming gender is in student profile
+  // Make gender explicitly optional and use the Gender type
+  gender?: Gender; // Use the specific type, mark as optional if it might not exist
 }
 
-// Represents the data stored in 'students-by-uid' collection
-export interface StudentProfile {
+// Represents the data stored in 'students-by-uid' collection for quick profile access
+export interface StudentUidMap {
   uid: string; // Firebase Auth User ID, also document ID
   scholarNumber: string;
-  name: string;
-  branch: string;
-  yearOfPassing: number;
-  gender: string;
-  // Add other profile fields if needed
+  // Consider adding other frequently needed fields here if querying 'students' is too slow often
+  // name?: string;
+  // branch?: string;
 }
+
+
+// Type for the full student profile data used in components after fetching
+// Often combines data from Auth and Firestore
+export interface StudentProfile extends Student {
+    // Inherits all fields from Student
+    // Ensure gender is handled correctly (might be optional initially)
+    gender: Gender; // Make gender required in the profile used by components, providing a default if necessary
+}
+
 
 export interface VisibilitySettings {
     branches: string[]; // Empty array means visible to all branches
     yearsOfPassing: number[]; // Empty array means visible to all years
-    genders: string[]; // Empty array means visible to all genders
+    genders: string[]; // Empty array means visible to all genders (using string representation of Gender type)
 }
 
 export interface Post {
   id: string; // Document ID
   authorId: string; // UID of the author from students-by-uid
   authorName: string; // Denormalized author name
+  authorScholarNumber: string; // Denormalized
+  authorBranch: string; // Denormalized
+  authorYearOfPassing: number; // Denormalized
+  authorGender: Gender; // Denormalized author gender
   title: string;
   body: string;
   imageUrls?: string[]; // Optional: URLs of images in Firebase Storage
@@ -42,7 +58,7 @@ export interface Post {
   upvotesCount: number;
   downvotesCount: number;
   hotScore: number; // For 'Hot' sorting, needs to be calculated/updated
-  tags: string[]; // Includes authorName, scholarNumber, branch, yearOfPassing
+  tags: string[]; // Includes authorName, scholarNumber, branch, yearOfPassing, gender
   visibility: VisibilitySettings;
 }
 
@@ -120,7 +136,8 @@ export interface EventFavorite {
 }
 
 // Type for storing user data fetched from Firestore along with Auth data
-export interface AppUser extends Student {
-    // Inherits all fields from Student
-    // Add any additional combined fields if necessary
-}
+// Using StudentProfile as the primary type for application logic after data fetch
+// export interface AppUser extends StudentProfile {
+//     // Inherits all fields from StudentProfile
+//     // Add any additional combined fields if necessary
+// }

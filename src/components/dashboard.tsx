@@ -7,7 +7,7 @@ import { db } from '@/config/firebase';
 import { SidebarProvider, Sidebar, SidebarHeader, SidebarContent, SidebarFooter, SidebarTrigger, SidebarInset, SidebarMenu, SidebarMenuItem, SidebarMenuButton } from '@/components/ui/sidebar';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
-import { Home, FileText, Search, Calendar, Star, LogOut, Settings, User } from 'lucide-react';
+import { Home, FileText, Search, Calendar, Star, LogOut, Settings, User, PlusCircle } from 'lucide-react'; // Added PlusCircle
 import { signOut } from 'firebase/auth';
 import { auth } from '@/config/firebase';
 import { useRouter } from 'next/navigation';
@@ -19,13 +19,7 @@ import UserPosts from './user-posts';
 import UserEvents from './user-events';
 import LoadingSpinner from '@/components/loading-spinner';
 import type { Student } from '@/types'; // Import Student type
-
-// Remove StudentData type definition as we'll use the imported Student type
-// type StudentData = {
-//     name: string;
-//     scholarNumber: string;
-//     // Add other fields as needed
-// };
+import { CreatePostForm } from './CreatePostForm'; // Import CreatePostForm
 
 const getGreeting = () => {
   const hour = new Date().getHours();
@@ -47,7 +41,7 @@ const getInitials = (name: string = '') => {
 export default function Dashboard() {
   const { user } = useAuth();
   const [studentData, setStudentData] = useState<Student | null>(null); // Use Student type
-  const [activeSection, setActiveSection] = useState('home'); // home, posts, lost-found, events, your-posts, your-events
+  const [activeSection, setActiveSection] = useState('home'); // home, posts, lost-found, events, your-posts, your-events, create-post
   const [loadingData, setLoadingData] = useState(true);
   const router = useRouter();
   const { toast } = useToast();
@@ -85,6 +79,7 @@ export default function Dashboard() {
                     specialRoles: [],
                     phoneNumber: '',
                     uid: user.uid,
+                    gender: 'Prefer not to say', // Provide default gender
                  } as Student);
               }
             } else {
@@ -100,6 +95,7 @@ export default function Dashboard() {
                     specialRoles: [],
                     phoneNumber: '',
                     uid: user.uid,
+                    gender: 'Prefer not to say', // Provide default gender
                  } as Student);
             }
 
@@ -116,6 +112,7 @@ export default function Dashboard() {
                 specialRoles: [],
                 phoneNumber: '',
                 uid: user.uid,
+                gender: 'Prefer not to say', // Provide default gender
               } as Student);
           }
         } catch (error) {
@@ -131,6 +128,7 @@ export default function Dashboard() {
                 specialRoles: [],
                 phoneNumber: '',
                 uid: user.uid,
+                gender: 'Prefer not to say', // Provide default gender
             } as Student);
         } finally {
           setLoadingData(false);
@@ -147,6 +145,7 @@ export default function Dashboard() {
              specialRoles: [],
              phoneNumber: '',
              uid: user.uid,
+             gender: 'Prefer not to say', // Provide default gender for guest
             } as Student);
          setLoadingData(false);
       } else {
@@ -173,28 +172,41 @@ export default function Dashboard() {
 
   const renderContent = () => {
     // Pass student data to components that need it
-    const commonProps = { user, studentData };
+    // const commonProps = { user, studentData }; // studentData is already fetched in PostsFeed etc.
 
     switch (activeSection) {
       case 'home':
-        return <PostsFeed {...commonProps} />;
       case 'posts':
-         return <PostsFeed {...commonProps} />;
+        return (
+            <div className="space-y-6">
+              {/* Removed CreatePostForm from here to avoid duplication */}
+              <PostsFeed /> {/* Pass props if needed, but currently not */}
+            </div>
+        );
+      case 'create-post':
+         return <CreatePostForm />; // Render the form directly
       case 'lost-found':
-        return <LostAndFoundFeed {...commonProps} />;
+        // Pass props explicitly if LostAndFoundFeed needs them
+        return <LostAndFoundFeed user={user} studentData={studentData} />;
       case 'events':
-         return <EventsFeed {...commonProps} />;
+         // Pass props explicitly if EventsFeed needs them
+         return <EventsFeed user={user} studentData={studentData} />;
       case 'your-posts':
-        return <UserPosts {...commonProps} />;
+        // Pass props explicitly if UserPosts needs them
+        return <UserPosts user={user} studentData={studentData} />;
       case 'your-events':
-         return <UserEvents {...commonProps} />;
+         // Pass props explicitly if UserEvents needs them
+         return <UserEvents user={user} studentData={studentData} />;
       default:
-        return <PostsFeed {...commonProps} />;
+         return <PostsFeed />; // Default to PostsFeed
     }
   };
 
    const greeting = studentData ? `${getGreeting()}, ${studentData.name}` : getGreeting();
    const initials = studentData ? getInitials(studentData.name) : 'G'; // G for Guest
+
+  // Disable create post/event/lost&found for guest user
+  const isGuest = user?.email === 'guest@iiitbhopal.ac.in';
 
   return (
     <SidebarProvider>
@@ -202,7 +214,7 @@ export default function Dashboard() {
         <SidebarHeader className="p-4 items-center">
            <div className="flex items-center gap-3">
              <Avatar className="h-10 w-10">
-                {/* Add AvatarImage if profile picture URL exists */}
+                {/* TODO: Add AvatarImage if profile picture URL exists in studentData */}
                <AvatarFallback>{initials}</AvatarFallback>
              </Avatar>
               <div>
@@ -222,29 +234,60 @@ export default function Dashboard() {
                   <SidebarMenuItem>
                       <SidebarMenuButton onClick={() => setActiveSection('posts')} isActive={activeSection === 'posts'} tooltip="Posts">
                          <FileText />
-                         <span>Posts</span>
+                         <span>Posts Feed</span>
                       </SidebarMenuButton>
                   </SidebarMenuItem>
                   <SidebarMenuItem>
-                      <SidebarMenuButton onClick={() => setActiveSection('lost-found')} isActive={activeSection === 'lost-found'} tooltip="Lost & Found">
+                      <SidebarMenuButton
+                        onClick={() => setActiveSection('create-post')}
+                        isActive={activeSection === 'create-post'}
+                        tooltip="Create Post"
+                        disabled={isGuest} // Disable for guest
+                      >
+                         <PlusCircle />
+                         <span>Create Post</span>
+                      </SidebarMenuButton>
+                  </SidebarMenuItem>
+                  <SidebarMenuItem>
+                      <SidebarMenuButton
+                        onClick={() => setActiveSection('lost-found')}
+                        isActive={activeSection === 'lost-found'}
+                        tooltip="Lost & Found"
+                      >
                          <Search />
                          <span>Lost & Found</span>
                       </SidebarMenuButton>
                    </SidebarMenuItem>
+                   {/* TODO: Add Create Lost/Found Item Button (disabled for guest) */}
                    <SidebarMenuItem>
-                      <SidebarMenuButton onClick={() => setActiveSection('events')} isActive={activeSection === 'events'} tooltip="Events">
+                      <SidebarMenuButton
+                        onClick={() => setActiveSection('events')}
+                        isActive={activeSection === 'events'}
+                        tooltip="Events"
+                      >
                           <Calendar />
                           <span>Events</span>
                       </SidebarMenuButton>
                    </SidebarMenuItem>
+                   {/* TODO: Add Create Event Button (disabled for guest) */}
                  <SidebarMenuItem>
-                      <SidebarMenuButton onClick={() => setActiveSection('your-posts')} isActive={activeSection === 'your-posts'} tooltip="Your Posts">
+                      <SidebarMenuButton
+                        onClick={() => setActiveSection('your-posts')}
+                        isActive={activeSection === 'your-posts'}
+                        tooltip="Your Posts"
+                        disabled={isGuest} // Disable for guest
+                      >
                          <User />
                           <span>Your Posts</span>
                       </SidebarMenuButton>
                   </SidebarMenuItem>
                    <SidebarMenuItem>
-                      <SidebarMenuButton onClick={() => setActiveSection('your-events')} isActive={activeSection === 'your-events'} tooltip="Your Events">
+                      <SidebarMenuButton
+                        onClick={() => setActiveSection('your-events')}
+                        isActive={activeSection === 'your-events'}
+                        tooltip="Your Events"
+                        disabled={isGuest} // Disable for guest
+                      >
                          <Star />
                           <span>Your Events</span>
                        </SidebarMenuButton>
@@ -252,14 +295,6 @@ export default function Dashboard() {
              </SidebarMenu>
         </SidebarContent>
         <SidebarFooter className="p-2">
-           {/* <SidebarMenu>
-                <SidebarMenuItem>
-                      <SidebarMenuButton tooltip="Settings">
-                         <Settings />
-                         <span>Settings</span>
-                      </SidebarMenuButton>
-                 </SidebarMenuItem>
-           </SidebarMenu> */}
             <Button variant="ghost" className="w-full justify-start gap-2 text-sidebar-foreground/80 hover:text-sidebar-foreground" onClick={handleLogout}>
               <LogOut className="h-4 w-4" />
               <span>Logout</span>
@@ -275,16 +310,17 @@ export default function Dashboard() {
            </div>
             <div className="hidden sm:flex items-center gap-4"> {/* Show only greeting on larger screens */}
                 <h1 className="text-lg font-semibold">{greeting}</h1>
-                {/* Optionally add other header elements here */}
+                 {/* Optionally add a global create button here? */}
+                 {!isGuest && (
+                    <Button size="sm" onClick={() => setActiveSection('create-post')}>
+                      <PlusCircle className="mr-2 h-4 w-4" /> Create Post
+                    </Button>
+                 )}
             </div>
-            {/* Sidebar trigger on large screens (if needed) */}
-             <div className="sm:hidden"> {/* Only show trigger button on small screens if sidebar is collapsed initially */}
+             {/* Sidebar trigger on large screens (if needed) */}
+             {/* <div className="sm:hidden"> {/* Only show trigger button on small screens if sidebar is collapsed initially */}
                {/* <SidebarTrigger /> */}
-             </div>
-             {/* Optionally add a trigger for large screens if design requires it */}
-             {/* <div className="hidden sm:flex items-center gap-2">
-                <SidebarTrigger />
-             </div> */}
+             {/* </div> */}
          </header>
         <main className="flex-1 p-4 md:p-6 lg:p-8 overflow-auto">
            {loadingData ? <LoadingSpinner /> : renderContent()}
@@ -293,5 +329,3 @@ export default function Dashboard() {
     </SidebarProvider>
   );
 }
-
-    
