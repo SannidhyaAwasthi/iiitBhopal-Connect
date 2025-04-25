@@ -3,138 +3,115 @@ import type { Timestamp } from 'firebase/firestore';
 // Define possible gender values explicitly
 export type Gender = 'Male' | 'Female' | 'Other' | 'Prefer not to say' | 'Unknown'; // Ensure Unknown is included
 
+// Represents the core data stored for a student in Firestore ('students' collection)
 export interface Student {
-  scholarNumber: string; // PK
+  uid: string; // Firebase Auth User ID, should ideally be the document ID in a 'users' or 'profiles' collection if using UID as ID.
+  scholarNumber: string; // Unique student identifier, used as ID in 'students' collection for this app structure.
   name: string;
-  branch: 'ECE' | 'CSE' | 'IT' | 'Unknown'; // Example branches, adjust as needed
-  section?: string; // Optional
-  yearOfPassing: number;
-  programType: 'Undergraduate' | 'Postgraduate';
-  specialRoles: string[]; // e.g., ['CR', 'Admin']
-  phoneNumber: string;
   email: string;
-  uid: string; // Firebase Auth User ID
-  // Gender from Firestore might be missing, so make it optional here
-  gender?: Gender; // Use the specific type, mark as optional
+  phoneNumber: string;
+  branch: 'ECE' | 'CSE' | 'IT' | 'Unknown';
+  programType: 'Undergraduate' | 'Postgraduate';
+  yearOfPassing: number;
+  specialRoles: string[]; // e.g., ['CR', 'Admin']
+  // Gender might be missing initially, but should be set later (or defaulted).
+  // Made optional here to reflect potential Firestore state before profile completion/update.
+  gender?: Gender;
 }
 
-// Represents the data stored in 'students-by-uid' collection for quick profile access
+// Represents the data stored in 'students-by-uid' collection for quick mapping
+// UID (Auth ID) -> Scholar Number
 export interface StudentUidMap {
-  uid: string; // Firebase Auth User ID, also document ID
+  // Document ID is the user's UID (request.auth.uid)
   scholarNumber: string;
-  // Consider adding other frequently needed fields here if querying 'students' is too slow often
-  // name?: string;
-  // branch?: string;
 }
 
 
-// Type for the full student profile data used in components after fetching
-// This type guarantees that gender exists (defaulted if missing from source)
+// Type for the full student profile data used in components after fetching and potentially defaulting values.
+// Ensures required fields for app functionality are present.
 export interface StudentProfile extends Omit<Student, 'gender'> {
     // Inherits all fields from Student except gender
-    gender: Gender; // Gender is required here, ensuring it has a value (including 'Unknown')
+    gender: Gender; // Gender is required here, ensuring it has a value (e.g., 'Unknown' if not set)
 }
 
 
 export interface VisibilitySettings {
     branches: string[]; // Empty array means visible to all branches
     yearsOfPassing: number[]; // Empty array means visible to all years
-    // Use Gender type values as strings here for Firestore storage compatibility
-    genders: string[]; // Empty array means visible to all genders
+    genders: string[]; // Empty array means visible to all genders, uses Gender type values
 }
 
 export interface Post {
-  id: string; // Document ID
-  authorId: string; // UID of the author from students-by-uid
+  id: string; // Document ID from Firestore
+  authorId: string; // UID of the author
   authorName: string; // Denormalized author name
-  authorScholarNumber: string; // Denormalized
-  authorBranch: string; // Denormalized
-  authorYearOfPassing: number; // Denormalized
-  authorGender: Gender; // Denormalized author gender (guaranteed by StudentProfile)
+  authorScholarNumber: string; // Denormalized scholar number
+  authorBranch: string; // Denormalized branch
+  authorYearOfPassing: number; // Denormalized year
+  authorGender: Gender; // Denormalized gender
   title: string;
   body: string;
-  imageUrls?: string[]; // Optional: URLs of images in Firebase Storage
+  imageUrls?: string[]; // URLs of images in Firebase Storage
   timestamp: Timestamp; // Firestore Timestamp for creation
-  lastEdited?: Timestamp; // Optional: Firestore Timestamp for last edit
+  lastEdited?: Timestamp; // Firestore Timestamp for last edit
   upvotesCount: number;
   downvotesCount: number;
-  hotScore: number; // For 'Hot' sorting, needs to be calculated/updated
-  tags: string[]; // Includes authorName, scholarNumber, branch, yearOfPassing, gender
+  hotScore: number; // Calculated score for sorting
+  tags: string[]; // Search tags (e.g., author details, keywords)
   visibility: VisibilitySettings;
-  // These fields are added client-side after fetching votes/favorites
-  userVote?: 'up' | 'down' | null; // Vote status for the current user
-  isFavorite?: boolean; // Favorite status for the current user
+  // Client-side added properties
+  userVote?: 'up' | 'down' | null; // Current user's vote status
+  isFavorite?: boolean; // Current user's favorite status
 }
 
 export interface PostVote {
-  userId: string; // UID of the voter
+  // Document ID is composite: `${userId}_${postId}`
+  userId: string;
   postId: string;
   voteType: 'up' | 'down';
-  timestamp: Timestamp; // When the vote was cast/updated
+  timestamp: Timestamp;
 }
 
 export interface FavoritePost {
-  userId: string; // UID of the user who favorited
+  // Document ID is composite: `${userId}_${postId}`
+  userId: string;
   postId: string;
-  timestamp: Timestamp; // When the post was favorited
+  timestamp: Timestamp; // When favorited
 }
 
+// --- Lost and Found ---
 
-// Existing types from the original file (keeping them for context)
+export type LostFoundType = 'lost' | 'found';
+export type LostFoundStatus = 'active' | 'inactive' | 'claimed'; // 'claimed' could replace 'inactive' for found items
 
 export interface LostAndFoundItem {
-  id: string; // Document ID
-  reporterId: string; // UID of the student who reported
-  reporterName: string; // Denormalized
-  reporterScholarNumber: string; // Denormalized
+  id: string; // Firestore Document ID
+  type: LostFoundType; // 'lost' or 'found'
   title: string;
   description?: string;
-  image?: string; // URL
-  timeFound: Timestamp;
-  placeFound: string;
-  status: 'lost' | 'found' | 'claimed';
-  claimedBy?: string; // UID of the student who claimed
-  claimedAt?: Timestamp;
+  imageUrl?: string; // Optional image URL (primarily for 'found' items)
+  timestamp: Timestamp; // Timestamp when reported/found/lost
+  location: string; // Location where item was lost/found
+  reporterId: string; // UID of the student reporting
+  reporterName: string; // Denormalized name
+  reporterScholarNumber: string; // Denormalized scholar number
+  status: LostFoundStatus; // 'active' or 'inactive' (e.g., after claimed)
+  // Fields specific to 'found' items
+  claimers?: string[]; // Array of UIDs of users who have claimed (for 'found' items)
+  confirmedClaimer?: string; // UID of the user whose claim was confirmed (for 'found' items)
 }
 
+// Used for displaying claimer info on a found item card
+export interface ClaimerInfo {
+    uid: string;
+    name: string;
+    scholarNumber: string;
+}
+
+
+// --- Events ---
+// Placeholder - Define Event related types later if needed
 export interface Event {
-  id: string; // Document ID
-  creatorId: string; // UID of the creator
-  creatorName: string; // Denormalized
-  creatorScholarNumber: string; // Denormalized
-  title: string;
-  description: string;
-  poster?: string; // URL
-  startTime: Timestamp;
-  endTime: Timestamp;
-  location: string;
-  registrationCount: number; // Denormalized count
-  createdAt: Timestamp;
-}
-
-// Supporting Collections Types
-
-export interface EventModerator {
-  eventId: string;
-  moderatorId: string; // UID of the moderator
-}
-
-export interface EventRegistration {
-  eventId: string;
-  attendeeId: string; // UID of the attendee
-  attendeeScholarNumber: string; // Store scholar number for easy tracking
-  registeredAt: Timestamp;
-}
-
-export interface EventUpdate {
-  eventId: string;
-  updateId: string; // Document ID for the update
-  message: string;
-  sentAt: Timestamp;
-  senderId: string; // UID of creator/moderator who sent it
-}
-
-export interface EventFavorite {
-  userId: string; // UID of the user who favorited
-  eventId: string;
+  id: string;
+  // ... other event fields
 }

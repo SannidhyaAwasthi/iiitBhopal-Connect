@@ -7,20 +7,20 @@ import { db } from '@/config/firebase';
 import { SidebarProvider, Sidebar, SidebarHeader, SidebarContent, SidebarFooter, SidebarTrigger, SidebarInset, SidebarMenu, SidebarMenuItem, SidebarMenuButton } from '@/components/ui/sidebar';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
-import { Home, FileText, Search, Calendar, LogOut, User as UserIcon } from 'lucide-react'; // Removed Star, User as UserIcon
+import { Home, FileText, Search, Calendar, LogOut, User as UserIcon } from 'lucide-react'; // Keep Search icon for L&F
 import { signOut } from 'firebase/auth';
 import { auth } from '@/config/firebase';
 import { useRouter } from 'next/navigation';
 import { useToast } from '@/hooks/use-toast';
 import PostsFeed from './posts-feed';
-import LostAndFoundFeed from './lost-found-feed';
+import LostAndFoundFeed from './lost-found-feed'; // Correct import name
 import EventsFeed from './events-feed';
-import UserPosts from './user-posts'; // Import UserPosts
+import UserPosts from './user-posts';
 import UserEvents from './user-events';
 import UserFavorites from './user-favorites';
 import LoadingSpinner from '@/components/loading-spinner';
-import type { StudentProfile } from '@/types'; // Import StudentProfile
-import { CreatePostForm } from './CreatePostForm'; // Keep for the 'create-post' section
+import type { StudentProfile } from '@/types';
+import { CreatePostForm } from './CreatePostForm';
 
 const getGreeting = () => {
   const hour = new Date().getHours();
@@ -91,72 +91,54 @@ export default function Dashboard() {
                      specialRoles: fetchedData.specialRoles || [],
                      phoneNumber: fetchedData.phoneNumber || '',
                      uid: fetchedData.uid || user.uid,
-                     gender: fetchedData.gender || 'Unknown',
+                     gender: fetchedData.gender || 'Unknown', // Default gender if missing
                  });
               } else {
                  console.warn("No student document found for scholar number:", scholarNumber);
+                 // Set default/fallback data if student doc is missing
                  setStudentData({
                     name: user.displayName || "Student",
-                    scholarNumber: "N/A",
+                    scholarNumber: scholarNumber, // Use scholar number from map if available
                     email: user.email || "N/A",
-                    branch: 'Unknown',
-                    yearOfPassing: 0,
-                    programType: 'Undergraduate',
-                    specialRoles: [],
-                    phoneNumber: '',
-                    uid: user.uid,
-                    gender: 'Prefer not to say',
+                    branch: 'Unknown', yearOfPassing: 0, programType: 'Undergraduate',
+                    specialRoles: [], phoneNumber: '', uid: user.uid, gender: 'Unknown',
                  });
               }
             } else {
                 console.warn("Scholar number not found in UID map for user:", user.uid);
+                // Set default/fallback data if mapping is missing scholar number
                  setStudentData({
                     name: user.displayName || "Student",
-                    scholarNumber: "N/A",
-                    email: user.email || "N/A",
-                    branch: 'Unknown',
-                    yearOfPassing: 0,
-                    programType: 'Undergraduate',
-                    specialRoles: [],
-                    phoneNumber: '',
-                    uid: user.uid,
-                    gender: 'Prefer not to say',
+                    scholarNumber: "N/A", email: user.email || "N/A",
+                    branch: 'Unknown', yearOfPassing: 0, programType: 'Undergraduate',
+                    specialRoles: [], phoneNumber: '', uid: user.uid, gender: 'Unknown',
                  });
             }
           } else {
              console.warn("No UID map document found for user:", user.uid);
+             // Set default/fallback data if UID map is missing
               setStudentData({
                 name: user.displayName || "Student",
-                scholarNumber: "N/A",
-                email: user.email || "N/A",
-                branch: 'Unknown',
-                yearOfPassing: 0,
-                programType: 'Undergraduate',
-                specialRoles: [],
-                phoneNumber: '',
-                uid: user.uid,
-                gender: 'Prefer not to say',
+                scholarNumber: "N/A", email: user.email || "N/A",
+                branch: 'Unknown', yearOfPassing: 0, programType: 'Undergraduate',
+                specialRoles: [], phoneNumber: '', uid: user.uid, gender: 'Unknown',
               });
           }
         } catch (error) {
           console.error("Error fetching student data:", error);
+          // Set default/fallback data on error
             setStudentData({
                 name: user.displayName || "Student",
-                scholarNumber: "N/A",
-                email: user.email || "N/A",
-                branch: 'Unknown',
-                yearOfPassing: 0,
-                programType: 'Undergraduate',
-                specialRoles: [],
-                phoneNumber: '',
-                uid: user.uid,
-                gender: 'Prefer not to say',
+                scholarNumber: "N/A", email: user.email || "N/A",
+                branch: 'Unknown', yearOfPassing: 0, programType: 'Undergraduate',
+                specialRoles: [], phoneNumber: '', uid: user.uid, gender: 'Unknown',
             });
              toast({ variant: "destructive", title: "Profile Error", description: "Could not load your profile data." });
         } finally {
           setLoadingData(false);
         }
       } else {
+         // Clear data if user logs out
          setStudentData(null);
          setLoadingData(false);
       }
@@ -181,24 +163,26 @@ export default function Dashboard() {
 
 
   const renderContent = () => {
+     // Show loading spinner while fetching user or student data
      if (loadingData) {
         return <LoadingSpinner />;
      }
-     // This check might be overly restrictive if guests should see some content
-     // if (!isGuest && user && !studentData && activeSection !== 'home') {
-     //     return (
-     //        <div className="p-4 text-center text-red-500">
-     //           Failed to load profile data. Cannot display content.
-     //        </div>
-     //     );
-     // }
+
+      // Handle case where profile data failed to load for a non-guest user
+      if (!isGuest && user && !studentData) {
+         return (
+             <div className="p-4 text-center text-red-500">
+                 Failed to load profile data. Please try refreshing the page or contact support.
+             </div>
+         );
+     }
 
     switch (activeSection) {
        case 'home':
-         return <div className="text-center py-10 text-xl font-semibold">Homepage Placeholder - Coming Soon!</div>;
+         return <div className="text-center py-10 text-xl font-semibold">Homepage Placeholder - Content Coming Soon!</div>;
        case 'posts':
-         // Pass necessary props to PostsFeed, including setActiveSection
-         return <PostsFeed setActiveSection={setActiveSection} isGuest={isGuest} studentData={studentData} />;
+         // Pass necessary props to PostsFeed
+         return <PostsFeed isGuest={isGuest} studentData={studentData} />;
        case 'create-post':
          return isGuest ? (
              <p className="p-4 text-center">Guests cannot create posts.</p>
@@ -206,6 +190,7 @@ export default function Dashboard() {
              <CreatePostForm /> // Render the form component
          );
        case 'lost-found':
+         // Pass user and studentData to LostAndFoundFeed
          return <LostAndFoundFeed user={user} studentData={studentData} />;
        case 'events':
           return <EventsFeed user={user} studentData={studentData} />;
@@ -213,7 +198,6 @@ export default function Dashboard() {
          return isGuest ? (
              <p className="p-4 text-center">Guests do not have posts.</p>
          ) : (
-             // Pass user and studentData to UserPosts
              <UserPosts user={user} studentData={studentData} />
          );
        case 'your-events':
@@ -230,7 +214,7 @@ export default function Dashboard() {
           );
        default:
           // Default back to posts if section is unknown
-          return <PostsFeed setActiveSection={setActiveSection} isGuest={isGuest} studentData={studentData}/>;
+          return <PostsFeed isGuest={isGuest} studentData={studentData}/>;
     }
   };
 
@@ -263,9 +247,8 @@ export default function Dashboard() {
                  <SidebarMenuItem>
                       <SidebarMenuButton
                         onClick={() => setActiveSection('posts')}
-                        // Keep active if viewing main posts, create post, user's posts, or favorites
                         isActive={['posts', 'create-post', 'your-posts', 'your-favorites'].includes(activeSection)}
-                        tooltip="Posts"
+                        tooltip="Posts Feed"
                       >
                          <FileText />
                          <span>Posts</span>
@@ -274,7 +257,7 @@ export default function Dashboard() {
                   <SidebarMenuItem>
                       <SidebarMenuButton
                         onClick={() => setActiveSection('lost-found')}
-                        isActive={activeSection === 'lost-found'} // Add your-lost-found if needed
+                        isActive={activeSection === 'lost-found'}
                         tooltip="Lost & Found"
                       >
                          <Search />
@@ -291,6 +274,7 @@ export default function Dashboard() {
                           <span>Events</span>
                       </SidebarMenuButton>
                    </SidebarMenuItem>
+                  {/* Add other menu items here if needed */}
              </SidebarMenu>
         </SidebarContent>
         <SidebarFooter className="p-2">
