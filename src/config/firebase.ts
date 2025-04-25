@@ -1,6 +1,7 @@
 import { initializeApp, getApps, getApp } from 'firebase/app';
 import { getAuth } from 'firebase/auth';
 import { getFirestore } from 'firebase/firestore';
+import { getStorage } from 'firebase/storage'; // Import getStorage
 
 // Ensure environment variables are loaded correctly.
 // Throw an error during build/startup if any are missing.
@@ -30,5 +31,6 @@ if (missingConfigKeys.length > 0) {
 const app = !getApps().length ? initializeApp(firebaseConfig) : getApp();
 const auth = getAuth(app);
 const db = getFirestore(app);
+const storage = getStorage(app); // Export getStorage as 'storage'
 
-export { app, auth, db };
+export { app, auth, db, storage };

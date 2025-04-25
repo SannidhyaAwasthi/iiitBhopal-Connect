@@ -3,7 +3,7 @@ import type { Timestamp } from 'firebase/firestore';
 export interface Student {
   scholarNumber: string; // PK
   name: string;
-  branch: 'ECE' | 'CSE' | 'IT' | 'Unknown';
+  branch: 'ECE' | 'CSE' | 'IT' | 'Unknown'; // Example branches, adjust as needed
   section?: string; // Optional
   yearOfPassing: number;
   programType: 'Undergraduate' | 'Postgraduate';
@@ -11,27 +11,56 @@ export interface Student {
   phoneNumber: string;
   email: string;
   uid: string; // Firebase Auth User ID
+  gender: 'Male' | 'Female' | 'Other' | 'Prefer not to say'; // Assuming gender is in student profile
+}
+
+// Represents the data stored in 'students-by-uid' collection
+export interface StudentProfile {
+  uid: string; // Firebase Auth User ID, also document ID
+  scholarNumber: string;
+  name: string;
+  branch: string;
+  yearOfPassing: number;
+  gender: string;
+  // Add other profile fields if needed
+}
+
+export interface VisibilitySettings {
+    branches: string[]; // Empty array means visible to all branches
+    yearsOfPassing: number[]; // Empty array means visible to all years
+    genders: string[]; // Empty array means visible to all genders
 }
 
 export interface Post {
   id: string; // Document ID
-  authorId: string; // UID of the author (student)
-  authorName: string; // Denormalized for display
-  authorScholarNumber: string; // Denormalized for display
+  authorId: string; // UID of the author from students-by-uid
+  authorName: string; // Denormalized author name
   title: string;
   body: string;
-  imageUrl?: string; // Optional
-  createdAt: Timestamp;
-  status: 'pending' | 'approved' | 'rejected';
-  approvalInfo?: {
-    approverId: string; // UID of CR
-    approvedAt: Timestamp;
-  };
-  upvotes: number;
-  downvotes: number;
-  // Store UIDs of users who voted to prevent multiple votes
-  votedBy?: { [uid: string]: 'up' | 'down' };
+  imageUrls?: string[]; // Optional: URLs of images in Firebase Storage
+  timestamp: Timestamp; // Firestore Timestamp
+  upvotesCount: number;
+  downvotesCount: number;
+  hotScore: number; // For 'Hot' sorting, needs to be calculated/updated
+  tags: string[]; // Includes authorName, scholarNumber, branch, yearOfPassing
+  visibility: VisibilitySettings;
 }
+
+export interface PostVote {
+  userId: string; // UID of the voter
+  postId: string;
+  voteType: 'up' | 'down';
+  timestamp: Timestamp; // When the vote was cast/updated
+}
+
+export interface FavoritePost {
+  userId: string; // UID of the user who favorited
+  postId: string;
+  timestamp: Timestamp; // When the post was favorited
+}
+
+
+// Existing types from the original file (keeping them for context)
 
 export interface LostAndFoundItem {
   id: string; // Document ID
@@ -88,12 +117,6 @@ export interface EventUpdate {
 export interface EventFavorite {
   userId: string; // UID of the user who favorited
   eventId: string;
-}
-
-export interface PostVote {
-    postId: string;
-    userId: string; // UID of the voter
-    voteType: 'up' | 'down';
 }
 
 // Type for storing user data fetched from Firestore along with Auth data
