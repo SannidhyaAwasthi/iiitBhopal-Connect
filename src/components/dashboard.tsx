@@ -7,16 +7,16 @@ import { db } from '@/config/firebase';
 import { SidebarProvider, Sidebar, SidebarHeader, SidebarContent, SidebarFooter, SidebarTrigger, SidebarInset, SidebarMenu, SidebarMenuItem, SidebarMenuButton } from '@/components/ui/sidebar';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
-import { Home, FileText, Search, Calendar, LogOut, User as UserIcon } from 'lucide-react'; // Keep Search icon for L&F
+import { Home, FileText, Search, Calendar, LogOut, User as UserIcon, ListOrdered, ListPlus, Star, CalendarCheck } from 'lucide-react'; // Added more icons
 import { signOut } from 'firebase/auth';
 import { auth } from '@/config/firebase';
 import { useRouter } from 'next/navigation';
 import { useToast } from '@/hooks/use-toast';
 import PostsFeed from './posts-feed';
-import LostAndFoundFeed from './LostAndFoundFeed'; // Ensure correct casing
-import EventsFeed from './events-feed';
+import LostAndFoundFeed from './LostAndFoundFeed';
+import { EventsFeed } from './EventsFeed';
 import UserPosts from './user-posts';
-import UserEvents from './user-events';
+import UserEvents from './user-events'; // Placeholder for component to show user's events
 import UserFavorites from './user-favorites';
 import LoadingSpinner from '@/components/loading-spinner';
 import type { StudentProfile } from '@/types';
@@ -53,38 +53,24 @@ export default function Dashboard() {
       if (user) {
         setLoadingData(true);
         try {
-          // Handle guest user explicitly
           if (user.email === 'guest@iiitbhopal.ac.in') {
              setStudentData({
-                 name: "Guest",
-                 scholarNumber: "guest",
-                 email: "guest@iiitbhopal.ac.in",
-                 branch: 'Unknown',
-                 yearOfPassing: 0,
-                 programType: 'Undergraduate',
-                 specialRoles: [],
-                 phoneNumber: '',
-                 uid: user.uid,
-                 gender: 'Prefer not to say',
+                 name: "Guest", scholarNumber: "guest", email: "guest@iiitbhopal.ac.in",
+                 branch: 'Unknown', yearOfPassing: 0, programType: 'Undergraduate',
+                 specialRoles: [], phoneNumber: '', uid: user.uid, gender: 'Prefer not to say',
              });
-             return; // Exit early for guest
+             return;
           }
 
-          // Proceed for logged-in, non-guest users
           const uidMapRef = doc(db, 'students-by-uid', user.uid);
           const uidMapSnap = await getDoc(uidMapRef);
-
           if (!uidMapSnap.exists()) throw new Error("Student UID mapping not found.");
-
           const scholarNumber = uidMapSnap.data()?.scholarNumber;
           if (!scholarNumber) throw new Error("Scholar number not found in mapping.");
-
           const studentDocRef = doc(db, 'students', scholarNumber);
           const studentDocSnap = await getDoc(studentDocRef);
+          if (!studentDocSnap.exists()) throw new Error(`Student profile not found: ${scholarNumber}`);
 
-          if (!studentDocSnap.exists()) throw new Error(`Student profile not found for scholar number: ${scholarNumber}`);
-
-          // Ensure gender exists, providing a default if necessary
            const fetchedData = studentDocSnap.data() as Omit<StudentProfile, 'gender'> & { gender?: StudentProfile['gender'] };
            setStudentData({
                ...fetchedData,
@@ -97,12 +83,11 @@ export default function Dashboard() {
                specialRoles: fetchedData.specialRoles || [],
                phoneNumber: fetchedData.phoneNumber || '',
                uid: fetchedData.uid || user.uid,
-               gender: fetchedData.gender || 'Unknown', // Default gender if missing
+               gender: fetchedData.gender || 'Unknown',
            });
 
         } catch (error: any) {
           console.error("Error fetching student data:", error);
-           // Set fallback data on error for logged-in users
             setStudentData({
                 name: user.displayName || "Student",
                 scholarNumber: "N/A", email: user.email || "N/A",
@@ -114,7 +99,6 @@ export default function Dashboard() {
           setLoadingData(false);
         }
       } else {
-         // Clear data if user logs out
          setStudentData(null);
          setLoadingData(false);
       }
@@ -128,11 +112,11 @@ export default function Dashboard() {
   const handleLogout = async () => {
     try {
       await signOut(auth);
-       toast({ title: "Logged Out", description: "You have been successfully logged out." });
+       toast({ title: "Logged Out" });
       router.push('/login');
     } catch (error) {
       console.error('Logout error:', error);
-        toast({ variant: "destructive", title: "Logout Failed", description: "Could not log out." });
+        toast({ variant: "destructive", title: "Logout Failed" });
     }
   };
 
@@ -141,81 +125,46 @@ export default function Dashboard() {
 
   // --- Render Content based on Active Section ---
   const renderContent = () => {
-     // Show loading spinner while fetching user or student data
-     if (loadingData) {
+     if (loadingData) return <LoadingSpinner />;
+     if (!user) {
+        router.push('/login');
         return <LoadingSpinner />;
      }
-
-     // Redirect to login if not loading and no user (this should ideally be caught by page.tsx, but good safeguard)
-     if (!user) {
-        router.push('/login'); // Redirect if somehow user is null after loading
-        return <LoadingSpinner />; // Show spinner during redirect
-     }
-
-      // Handle case where profile data failed to load for a non-guest user
       if (!isGuest && !studentData) {
-         return (
-             <div className="p-4 text-center text-red-500">
-                 Failed to load profile data. Please try refreshing the page or contact support.
-             </div>
-         );
+         return <div className="p-4 text-center text-red-500">Failed to load profile data.</div>;
      }
 
     switch (activeSection) {
        case 'home':
-         return <div className="text-center py-10 text-xl font-semibold">Homepage Placeholder - Content Coming Soon!</div>;
+         return <div className="text-center py-10 text-xl font-semibold">Homepage Placeholder</div>;
        case 'posts':
-         // Pass necessary props to PostsFeed
          return <PostsFeed setActiveSection={setActiveSection} isGuest={isGuest} studentData={studentData} />;
-       case 'create-post':
-         return isGuest ? (
-             <p className="p-4 text-center">Guests cannot create posts.</p>
-         ) : (
-             // Redirect back to posts feed if trying to access create-post directly?
-             // Or just render the form directly if that's intended.
-             <CreatePostForm /> // Render the form component
-         );
+       case 'create-post': // This might not be needed if handled within PostsFeed
+         return isGuest ? <p className="p-4 text-center">Guests cannot create posts.</p> : <CreatePostForm />;
        case 'lost-found':
-         // Replace placeholder with the actual LostAndFoundFeed component
          return <LostAndFoundFeed user={user} studentData={studentData} />;
        case 'events':
           return <EventsFeed user={user} studentData={studentData} />;
-       case 'your-posts':
-         return isGuest ? (
-             <p className="p-4 text-center">Guests do not have posts.</p>
-         ) : (
-             <UserPosts user={user} studentData={studentData} />
-         );
-       case 'your-events':
-          return isGuest ? (
-             <p className="p-4 text-center">Guests do not have events.</p>
-          ) : (
-             <UserEvents user={user} studentData={studentData} />
-          );
-       case 'your-favorites':
-          return isGuest ? (
-             <p className="p-4 text-center">Guests do not have favorites.</p>
-          ) : (
-             <UserFavorites user={user} studentData={studentData} />
-          );
+       case 'my-posts': // Renamed from your-posts for consistency
+         return isGuest ? <p className="p-4 text-center">Guests do not have posts.</p> : <UserPosts user={user} studentData={studentData} />;
+       case 'my-events': // <-- Added case for my-events
+          return isGuest ? <p className="p-4 text-center">Guests do not have events.</p> : <UserEvents user={user} studentData={studentData} />;
+       case 'my-favorites': // Renamed from your-favorites
+          return isGuest ? <p className="p-4 text-center">Guests do not have favorites.</p> : <UserFavorites user={user} studentData={studentData} />;
        default:
-          // Default back to home if section is unknown
-          return <div className="text-center py-10 text-xl font-semibold">Homepage Placeholder - Content Coming Soon!</div>;
+          return <div className="text-center py-10 text-xl font-semibold">Homepage Placeholder</div>;
     }
   };
 
    const greeting = studentData ? `${getGreeting()}, ${studentData.name}` : getGreeting();
    const initials = studentData ? getInitials(studentData.name) : 'G';
 
-  // --- Main Component Return ---
-  // The structure seems correct, focusing on ensuring all imports and components are standard
   return (
     <SidebarProvider>
       <Sidebar>
         <SidebarHeader className="p-4 items-center">
            <div className="flex items-center gap-3">
              <Avatar className="h-10 w-10">
-               {/* Optionally add AvatarImage if you store profile picture URLs */}
                <AvatarFallback>{initials}</AvatarFallback>
              </Avatar>
               <div>
@@ -226,53 +175,58 @@ export default function Dashboard() {
         </SidebarHeader>
         <SidebarContent className="p-2">
             <SidebarMenu>
-                 {/* Home Button */}
+                 {/* --- Main Navigation --- */}
                  <SidebarMenuItem>
                       <SidebarMenuButton onClick={() => setActiveSection('home')} isActive={activeSection === 'home'} tooltip="Home">
-                         <Home />
-                         <span>Home</span>
+                         <Home /> <span>Home</span>
                       </SidebarMenuButton>
                  </SidebarMenuItem>
-                 {/* Posts Feed Button */}
                  <SidebarMenuItem>
-                      <SidebarMenuButton
-                        onClick={() => setActiveSection('posts')}
-                        // Keep active if viewing posts, creating post, your posts, or favorites
-                        isActive={['posts', 'create-post', 'your-posts', 'your-favorites'].includes(activeSection)}
-                        tooltip="Posts Feed"
-                      >
-                         <FileText />
-                         <span>Posts</span>
+                      <SidebarMenuButton onClick={() => setActiveSection('posts')} isActive={activeSection === 'posts'} tooltip="Posts Feed">
+                         <FileText /> <span>Posts</span>
                       </SidebarMenuButton>
                  </SidebarMenuItem>
-                 {/* Lost & Found Button */}
-                  <SidebarMenuItem>
-                      <SidebarMenuButton
-                        onClick={() => setActiveSection('lost-found')}
-                        isActive={activeSection === 'lost-found'}
-                        tooltip="Lost & Found"
-                      >
-                         <Search />
-                         <span>Lost & Found</span>
+                 <SidebarMenuItem>
+                      <SidebarMenuButton onClick={() => setActiveSection('lost-found')} isActive={activeSection === 'lost-found'} tooltip="Lost & Found">
+                         <Search /> <span>Lost & Found</span>
                       </SidebarMenuButton>
                    </SidebarMenuItem>
-                   {/* Events Button */}
                    <SidebarMenuItem>
-                      <SidebarMenuButton
-                        onClick={() => setActiveSection('events')}
-                        // Keep active if viewing events or user's events
-                        isActive={['events', 'your-events'].includes(activeSection)}
-                        tooltip="Events"
-                      >
-                          <Calendar />
-                          <span>Events</span>
+                      <SidebarMenuButton onClick={() => setActiveSection('events')} isActive={activeSection === 'events'} tooltip="Events">
+                          <Calendar /> <span>Events</span>
                       </SidebarMenuButton>
                    </SidebarMenuItem>
-                  {/* Add other primary navigation items here if needed */}
+                   
+                  {/* --- User Content Submenu (only if not guest) --- */} 
+                  {!isGuest && (
+                    <>
+                      <p className="text-xs font-semibold text-sidebar-foreground/60 px-3 pt-4 pb-1">Your Content</p>
+                      <SidebarMenuItem>
+                          <SidebarMenuButton onClick={() => setActiveSection('my-posts')} isActive={activeSection === 'my-posts'} tooltip="My Posts">
+                              <ListOrdered /> <span>My Posts</span>
+                          </SidebarMenuButton>
+                      </SidebarMenuItem>
+                      <SidebarMenuItem>
+                          <SidebarMenuButton onClick={() => setActiveSection('my-events')} isActive={activeSection === 'my-events'} tooltip="My Events"> 
+                              <CalendarCheck /> <span>My Events</span> {/* <-- Added My Events button */} 
+                          </SidebarMenuButton>
+                      </SidebarMenuItem>
+                      <SidebarMenuItem>
+                          <SidebarMenuButton onClick={() => setActiveSection('my-favorites')} isActive={activeSection === 'my-favorites'} tooltip="My Favorites">
+                              <Star /> <span>My Favorites</span>
+                          </SidebarMenuButton>
+                      </SidebarMenuItem>
+                       {/* Add Create Post button here? or keep in feed */}
+                       {/* <SidebarMenuItem>
+                           <SidebarMenuButton onClick={() => setActiveSection('create-post')} isActive={activeSection === 'create-post'} tooltip="Create Post">
+                               <ListPlus /> <span>Create Post</span>
+                           </SidebarMenuButton>
+                       </SidebarMenuItem> */}
+                    </>
+                  )}
              </SidebarMenu>
         </SidebarContent>
         <SidebarFooter className="p-2">
-            {/* Logout Button */}
             <Button variant="ghost" className="w-full justify-start gap-2 text-sidebar-foreground/80 hover:text-sidebar-foreground" onClick={handleLogout}>
               <LogOut className="h-4 w-4" />
               <span>Logout</span>
@@ -281,20 +235,15 @@ export default function Dashboard() {
       </Sidebar>
 
       <SidebarInset>
-         {/* Header inside the main content area */}
          <header className="sticky top-0 z-10 flex h-14 items-center justify-between border-b bg-background px-4 sm:justify-end">
-           {/* Mobile: Trigger + Greeting */}
            <div className="flex items-center gap-2 sm:hidden">
              <SidebarTrigger />
              <h1 className="text-lg font-semibold">{greeting}</h1>
            </div>
-           {/* Desktop: Greeting only */}
             <div className="hidden sm:flex items-center gap-4">
                 <h1 className="text-lg font-semibold">{greeting}</h1>
-                {/* Optionally add other header elements for desktop here */}
             </div>
          </header>
-        {/* Main Content Area */}
         <main className="flex-1 p-4 md:p-6 lg:p-8 overflow-auto">
            {renderContent()}
         </main>

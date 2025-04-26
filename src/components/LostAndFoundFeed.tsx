@@ -58,9 +58,10 @@ const LostAndFoundFeed: FC<LostAndFoundFeedProps> = ({ user, studentData }) => {
         loadItems();
     }, [loadItems]);
 
-    const handleReportSuccess = () => {
-        loadItems(); // Refresh the lists after successful reporting
-        setIsReportLostOpen(false);
+    // Renamed function for clarity
+    const handleUpdateSuccess = () => {
+        loadItems(); // Refresh the lists after successful action
+        setIsReportLostOpen(false); // Close dialogs if they were open
         setIsReportFoundOpen(false);
     };
 
@@ -109,7 +110,7 @@ const LostAndFoundFeed: FC<LostAndFoundFeedProps> = ({ user, studentData }) => {
                                     key={item.id}
                                     item={item}
                                     currentUser={user}
-                                    onUpdate={loadItems} // Pass refresh function
+                                    onUpdate={handleUpdateSuccess} // Pass refresh function
                                 />
                             ))}
                         </div>
@@ -128,7 +129,7 @@ const LostAndFoundFeed: FC<LostAndFoundFeedProps> = ({ user, studentData }) => {
                                     item={item}
                                     currentUser={user}
                                     currentStudentProfile={studentData}
-                                    onItemFoundReported={handleReportSuccess} // Trigger refresh when found is reported
+                                    onUpdate={handleUpdateSuccess} // <-- Changed prop name
                                 />
                             ))}
                         </div>
@@ -137,13 +138,13 @@ const LostAndFoundFeed: FC<LostAndFoundFeedProps> = ({ user, studentData }) => {
             </Tabs>
 
 
-            {/* --- Dialogs for Reporting (conditionally rendered/disabled if not logged in) --- */}
+            {/* --- Dialogs for Reporting --- */}
              <ReportLostItemDialog
                 isOpen={isReportLostOpen}
                 onOpenChange={setIsReportLostOpen}
                 user={user}
                 studentData={studentData}
-                onSuccess={handleReportSuccess}
+                onSuccess={handleUpdateSuccess} // Use updated handler name
             />
 
             <ReportFoundItemDialog
@@ -151,7 +152,7 @@ const LostAndFoundFeed: FC<LostAndFoundFeedProps> = ({ user, studentData }) => {
                 onOpenChange={setIsReportFoundOpen}
                 user={user}
                 studentData={studentData}
-                onSuccess={handleReportSuccess}
+                onSuccess={handleUpdateSuccess} // Use updated handler name
             />
 
         </div>

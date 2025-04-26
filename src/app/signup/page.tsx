@@ -9,11 +9,14 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"; // Import Select components
 import Link from 'next/link';
 import { useToast } from "@/hooks/use-toast";
+import type { Gender } from '@/types'; // Import Gender type
 
 // Scholar number format: YY(U/P)XXZZZ
 const scholarNumberRegex = /^(\d{2})([UP])(0[1-3])(\d{3})$/;
+const AVAILABLE_GENDERS: Gender[] = ['Male', 'Female', 'Other', 'Prefer not to say']; // Define available genders
 
 const getBranchName = (code: string): string => {
   console.log("[getBranchName] Input code:", code);
@@ -21,7 +24,7 @@ const getBranchName = (code: string): string => {
     case '01': return 'ECE';
     case '02': return 'CSE';
     case '03': return 'IT';
-    default: 
+    default:
       console.error("[getBranchName] Unknown branch code:", code);
       return 'Unknown'; // Or potentially throw an error if this shouldn't happen
   }
@@ -32,6 +35,7 @@ export default function SignupPage() {
   const [scholarNumber, setScholarNumber] = useState('');
   const [email, setEmail] = useState('');
   const [phoneNumber, setPhoneNumber] = useState('');
+  const [gender, setGender] = useState<Gender | ''>(''); // State for gender, initialize as empty string
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [loading, setLoading] = useState(false);
@@ -49,6 +53,13 @@ export default function SignupPage() {
       toast({ variant: "destructive", title: "Signup Error", description: "Passwords do not match." });
       return;
     }
+
+    if (!gender) { // Ensure gender is selected
+      setError("Please select your gender.");
+      toast({ variant: "destructive", title: "Signup Error", description: "Please select your gender." });
+      return;
+    }
+
 
     const match = scholarNumber.match(scholarNumberRegex);
     if (!match) {
@@ -75,16 +86,13 @@ export default function SignupPage() {
       const admissionYear = parseInt(`20${admissionYearStr}`, 10);
       const programDuration = programType === 'U' ? 4 : 2;
       const yearOfPassing = admissionYear + programDuration;
-      
-      // --- Debugging getBranchName --- 
+
       console.log("[handleSignup] Determining branch from code:", branchCode);
       const branch = getBranchName(branchCode);
       console.log("[handleSignup] Branch determined:", branch);
       if (branch === 'Unknown') {
         console.warn("[handleSignup] Branch resolved to 'Unknown'. Check getBranchName logic and input.");
-        // Consider if you want to stop signup here if branch is Unknown
       }
-      // --- End Debugging getBranchName --- 
 
       // Store user data in Firestore
       const studentData = {
@@ -92,6 +100,7 @@ export default function SignupPage() {
         scholarNumber: scholarNumber,
         email: email,
         phoneNumber: phoneNumber,
+        gender: gender, // Include gender
         branch: branch,
         yearOfPassing: yearOfPassing,
         programType: programType === 'U' ? 'Undergraduate' : 'Postgraduate',
@@ -99,33 +108,29 @@ export default function SignupPage() {
         uid: user.uid,
       };
 
-      // --- Debugging Firestore --- 
-      console.log("[handleSignup] Firestore instance (db):", db); // Check if db object exists
+      console.log("[handleSignup] Firestore instance (db):", db);
       console.log("[handleSignup] Student data prepared:", JSON.stringify(studentData, null, 2));
       console.log(`[handleSignup] Attempting to write to Firestore collection 'students' with ID: ${scholarNumber}`);
-      
+
       await setDoc(doc(db, 'students', scholarNumber), studentData);
       console.log("[handleSignup] Successfully wrote to 'students' collection.");
 
       console.log(`[handleSignup] Attempting to write to Firestore collection 'students-by-uid' with ID: ${user.uid}`);
       await setDoc(doc(db, 'students-by-uid', user.uid), { scholarNumber: scholarNumber });
       console.log("[handleSignup] Successfully wrote to 'students-by-uid' collection.");
-      // --- End Debugging Firestore --- 
 
-      // Show success toast
+
+      // Show success toast BEFORE starting redirect timer
       toast({
         title: "Signup Successful!",
         description: "Your account has been created. Redirecting to login...",
       });
-
-      // Set signup success to trigger redirect
+      // Set signup success to true AFTER toast
       setSignupSuccess(true);
-      // Keep loading true until redirect starts in useEffect
-      // setLoading(false); // We remove this so the button stays disabled until redirect
+
 
     } catch (error: any) {
       console.error('Signup error during Firestore write or earlier:', error);
-      // Check if the error is specifically a Firestore permission error
       if (error.code === 'permission-denied') {
          setError("Firestore permission denied. Check your security rules.");
          toast({ variant: "destructive", title: "Signup Failed", description: "Database permission error. Contact support." });
@@ -139,20 +144,26 @@ export default function SignupPage() {
       }
       setLoading(false); // Stop loading only on error
     }
+    // setLoading(false) is intentionally removed here for successful signup to keep button disabled during redirect delay
   };
 
   // Handle redirect after successful signup
   useEffect(() => {
+    let timer: NodeJS.Timeout | null = null;
     if (signupSuccess) {
       console.log("[useEffect] Signup success detected, preparing redirect...");
       // Wait for 1.5 seconds to allow toast visibility, then redirect
-      const timer = setTimeout(() => {
+      timer = setTimeout(() => {
         console.log("[useEffect] Redirecting to /login");
         router.push('/login');
       }, 1500);
-      return () => clearTimeout(timer); // Cleanup timer on unmount
     }
+    // Cleanup timer on unmount or if signupSuccess changes back to false
+    return () => {
+      if (timer) clearTimeout(timer);
+    };
   }, [signupSuccess, router]);
+
 
   return (
     <div className="flex items-center justify-center min-h-screen bg-secondary">
@@ -165,7 +176,7 @@ export default function SignupPage() {
           <form onSubmit={handleSignup} className="space-y-3">
             {error && <p className="text-red-500 text-sm text-center">{error}</p>}
             <div className="space-y-1">
-              <Label htmlFor="scholarNumber">Scholar Number</Label>
+              <Label htmlFor="scholarNumber">Scholar Number <span className="text-red-500">*</span></Label>
               <Input
                 id="scholarNumber"
                 type="text"
@@ -176,10 +187,10 @@ export default function SignupPage() {
                 title="Format: YY(U/P)XXZZZ"
                 disabled={loading}
               />
-              <p className="text-xs text-muted-foreground">Format: YY(U/P)XXZZZ</p>
+              <p className="text-xs text-muted-foreground">Format: YY(U/P)XXZZZ (e.g., 22U02001)</p>
             </div>
             <div className="space-y-1">
-              <Label htmlFor="name">Name</Label>
+              <Label htmlFor="name">Name <span className="text-red-500">*</span></Label>
               <Input
                 id="name"
                 type="text"
@@ -191,7 +202,7 @@ export default function SignupPage() {
               />
             </div>
             <div className="space-y-1">
-              <Label htmlFor="email">Email</Label>
+              <Label htmlFor="email">Email <span className="text-red-500">*</span></Label>
               <Input
                 id="email"
                 type="email"
@@ -203,7 +214,7 @@ export default function SignupPage() {
               />
             </div>
             <div className="space-y-1">
-              <Label htmlFor="phoneNumber">Phone Number</Label>
+              <Label htmlFor="phoneNumber">Phone Number <span className="text-red-500">*</span></Label>
               <Input
                 id="phoneNumber"
                 type="tel"
@@ -214,8 +225,30 @@ export default function SignupPage() {
                 disabled={loading}
               />
             </div>
+            {/* Gender Selection */}
             <div className="space-y-1">
-              <Label htmlFor="password">Password</Label>
+              <Label htmlFor="gender">Gender <span className="text-red-500">*</span></Label>
+              <Select
+                value={gender}
+                onValueChange={(value) => setGender(value as Gender)}
+                required
+                disabled={loading}
+              >
+                <SelectTrigger id="gender">
+                  <SelectValue placeholder="Select your gender" />
+                </SelectTrigger>
+                <SelectContent>
+                  {AVAILABLE_GENDERS.map((g) => (
+                    <SelectItem key={g} value={g}>
+                      {g}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            {/* Password Fields */}
+            <div className="space-y-1">
+              <Label htmlFor="password">Password <span className="text-red-500">*</span></Label>
               <Input
                 id="password"
                 type="password"
@@ -225,9 +258,10 @@ export default function SignupPage() {
                 minLength={6}
                 disabled={loading}
               />
+               <p className="text-xs text-muted-foreground">Minimum 6 characters</p>
             </div>
             <div className="space-y-1">
-              <Label htmlFor="confirmPassword">Confirm Password</Label>
+              <Label htmlFor="confirmPassword">Confirm Password <span className="text-red-500">*</span></Label>
               <Input
                 id="confirmPassword"
                 type="password"

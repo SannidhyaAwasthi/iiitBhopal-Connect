@@ -4,7 +4,7 @@ import type { User } from 'firebase/auth';
 import type { LostAndFoundItem, Student, ClaimerInfo } from '@/types';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
-import { Clock, MapPin, User as UserIcon, CheckCircle, XCircle, Trash2, Users, Info } from 'lucide-react';
+import { Clock, MapPin, User as UserIcon, CheckCircle, XCircle, Trash2, Users, Info, Loader2 } from 'lucide-react'; // Added Loader2 here
 import { formatDistanceToNow } from 'date-fns';
 import Image from 'next/image';
 import { useToast } from '@/hooks/use-toast';
@@ -172,9 +172,9 @@ export const FoundItemCard: FC<FoundItemCardProps> = ({ item, currentUser, onUpd
                                          <li key={claimer.uid} className="flex justify-between items-center text-xs bg-secondary p-1.5 rounded">
                                              <span>{claimer.name} ({claimer.scholarNumber})</span>
                                              <Button
-                                                 size="xs" // Need a smaller button size potentially
+                                                 size="sm" // Changed from "xs" to "sm"
                                                  variant="outline"
-                                                 className="h-6 px-2"
+                                                 className="h-6 px-2" // Custom styling kept
                                                  onClick={() => handleConfirmClaim(claimer.uid)}
                                                  disabled={!!isConfirming} // Disable all confirm buttons while one is processing
                                              >

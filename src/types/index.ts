@@ -1,7 +1,8 @@
-import type { Timestamp } from 'firebase/firestore';
+import type { Timestamp, GeoPoint } from 'firebase/firestore'; // Added GeoPoint
 
 // Define possible gender values explicitly
-export type Gender = 'Male' | 'Female' | 'Other' | 'Prefer not to say' | 'Unknown'; // Ensure Unknown is included
+// Make sure 'Unknown' is included if it's a possible state (e.g., profile not fully updated)
+export type Gender = 'Male' | 'Female' | 'Other' | 'Prefer not to say' | 'Unknown';
 
 // Represents the core data stored for a student in Firestore ('students' collection)
 export interface Student {
@@ -14,9 +15,8 @@ export interface Student {
   programType: 'Undergraduate' | 'Postgraduate';
   yearOfPassing: number;
   specialRoles: string[]; // e.g., ['CR', 'Admin']
-  // Gender might be missing initially, but should be set later (or defaulted).
-  // Made optional here to reflect potential Firestore state before profile completion/update.
-  gender?: Gender;
+  // Gender is now required during signup
+  gender: Gender;
 }
 
 // Represents the data stored in 'students-by-uid' collection for quick mapping
@@ -29,16 +29,16 @@ export interface StudentUidMap {
 
 // Type for the full student profile data used in components after fetching and potentially defaulting values.
 // Ensures required fields for app functionality are present.
-export interface StudentProfile extends Omit<Student, 'gender'> {
-    // Inherits all fields from Student except gender
-    gender: Gender; // Gender is required here, ensuring it has a value (e.g., 'Unknown' if not set)
+// Since gender is now required at signup, StudentProfile is identical to Student
+export interface StudentProfile extends Student {
+    // Inherits all fields from Student including the required gender
 }
 
 
 export interface VisibilitySettings {
     branches: string[]; // Empty array means visible to all branches
     yearsOfPassing: number[]; // Empty array means visible to all years
-    genders: string[]; // Empty array means visible to all genders, uses Gender type values
+    genders: Gender[]; // Empty array means visible to all genders, uses Gender type values
 }
 
 export interface Post {
@@ -89,16 +89,17 @@ export interface LostAndFoundItem {
   type: LostFoundType; // 'lost' or 'found'
   title: string;
   description?: string;
-  imageUrl?: string; // Optional image URL (primarily for 'found' items)
+  imageUrl?: string | null; // Optional image URL (allow null)
   timestamp: Timestamp; // Timestamp when reported/found/lost
   location: string; // Location where item was lost/found
   reporterId: string; // UID of the student reporting
   reporterName: string; // Denormalized name
   reporterScholarNumber: string; // Denormalized scholar number
   status: LostFoundStatus; // 'active' or 'inactive' (e.g., after claimed)
+  createdAt?: Timestamp; // Add creation timestamp if needed
   // Fields specific to 'found' items
   claimers?: string[]; // Array of UIDs of users who have claimed (for 'found' items)
-  confirmedClaimer?: string; // UID of the user whose claim was confirmed (for 'found' items)
+  confirmedClaimer?: string | null; // UID of the user whose claim was confirmed (for 'found' items, allow null)
 }
 
 // Used for displaying claimer info on a found item card
@@ -110,8 +111,37 @@ export interface ClaimerInfo {
 
 
 // --- Events ---
-// Placeholder - Define Event related types later if needed
+
 export interface Event {
-  id: string;
-  // ... other event fields
+  id: string; // Firestore Document ID
+  title: string;
+  description: string;
+  venue: string;
+  location?: GeoPoint | null; // Optional GeoPoint
+  startTime?: Timestamp | null; // Optional start time
+  endTime?: Timestamp | null; // Optional end time
+  poster?: string | null; // URL of the event poster image
+  createdAt: Timestamp;
+  numberOfRegistrations: number;
+  postedBy: string; // UID of the user who created the event
+  postedByName: string;
+  postedByScholarNumber: string;
+  likes: string[]; // Array of UIDs
+  dislikes: string[]; // Array of UIDs
+  eventLink: string; // Unique link/ID for the event
+
+  // Client-side added properties (optional)
+  userLikeStatus?: 'liked' | 'disliked' | null;
+  isRegistered?: boolean;
+}
+
+export interface EventRegistration {
+  // Document ID can be the user's UID for easy checking
+  eventId: string; // reference back to the event
+  uid: string;
+  scholarNumber: string;
+  name: string;
+  phoneNumber: string;
+  email: string;
+  registrationTime: Timestamp;
 }

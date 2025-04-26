@@ -13,7 +13,8 @@ service cloud.firestore {
 
     match /students-by-uid/{userId} {
       allow create: if request.auth != null && request.auth.uid == userId;
-      allow read: if request.auth != null && request.auth.uid == userId; // Allow reading own mapping
+      // MODIFIED: Allow any authenticated user to read the UID -> scholarNumber mapping
+      allow read: if request.auth != null; 
       allow update, delete: if false || isAdmin();
     }
 
@@ -53,26 +54,27 @@ service cloud.firestore {
     // --- Lost and Found Rules ---
     match /lostAndFound/{itemId} {
       // Allow any authenticated user to read any lost/found item.
-      // Filtering for 'active' status happens client-side.
       allow read: if request.auth != null;
 
       // Allow authenticated users to create new lost/found items.
-      // Additional validation (e.g., required fields) should happen client-side or via functions.
       allow create: if request.auth != null && request.auth.uid == request.resource.data.reporterId;
 
       // Allow updates based on the action:
-      // - Reporter can delete their own post.
-      // - Reporter can confirm a claim (update status, confirmedClaimer, claimers).
-      // - Any authenticated user can claim/unclaim (update claimers array).
       allow update: if request.auth != null && (
-          // Reporter confirming a claim (changes status, confirmedClaimer, claimers)
+          // Reporter confirming a claim
           (resource.data.reporterId == request.auth.uid &&
-           request.resource.data.status == 'inactive' && // Status must become inactive
-           request.resource.data.confirmedClaimer is string && // confirmedClaimer must be set
-           request.resource.data.claimers is list && request.resource.data.claimers.size() == 0 // Claimers must be cleared
+           request.resource.data.status == 'inactive' && 
+           request.resource.data.confirmedClaimer is string && 
+           request.resource.data.claimers is list && request.resource.data.claimers.size() == 0
           ) ||
-          // Any user claiming/unclaiming (only affects 'claimers' array)
-          (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['claimers']))
+          // Any user claiming/unclaiming
+          (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['claimers'])) ||
+          // *** NEW: Allow any authenticated user to mark a 'lost' item as 'inactive' when found ***
+          (resource.data.type == 'lost' && 
+           resource.data.status == 'active' && 
+           request.resource.data.status == 'inactive' && 
+           request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status'])
+          )
       );
 
       // Allow reporter to delete their own post.
@@ -88,9 +90,6 @@ service cloud.firestore {
   // --- Helper Functions ---
   function isAdmin() {
     // Check if the requesting user's UID exists in the 'admins' collection
-    // Ensure the 'admins' collection structure matches this check.
     return exists(/databases/$(database)/documents/admins/$(request.auth.uid));
-    // Or, if using a field within the user's profile:
-    // return get(/databases/$(database)/documents/students-by-uid/$(request.auth.uid)).data.isAdmin == true;
   }
 }

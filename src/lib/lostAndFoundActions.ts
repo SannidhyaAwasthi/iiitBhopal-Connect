@@ -64,7 +64,7 @@ export async function addLostItem(
     imageFile: File | null
 ) {
     console.log("[addLostItem] Attempting to add:", itemData, "with image:", !!imageFile);
-    let imageUrl: string | undefined = undefined;
+    let imageUrl: string | null = null; // Initialize to null instead of undefined
 
     if (imageFile) {
         imageUrl = await uploadLostFoundImage(itemData.reporterId, imageFile); // Use helper
@@ -75,7 +75,7 @@ export async function addLostItem(
             ...itemData,
             type: 'lost', // Explicitly set type
             status: 'active', // Explicitly set status
-            imageUrl: imageUrl, // Add URL if uploaded
+            imageUrl: imageUrl, // Add URL if uploaded (will be null if no image)
             claimers: [], // Initialize empty
             confirmedClaimer: null, // Initialize null
             createdAt: serverTimestamp(), // Add creation timestamp
@@ -101,6 +101,7 @@ export async function addLostItem(
         if (firestoreError.code === 'permission-denied') {
             throw new Error("Permission denied: Could not save the lost item report. Check Firestore Rules.");
         } else {
+            // Ensure we don't throw the original Firestore error directly if it contains complex objects
             throw new Error(`Failed to report lost item: ${firestoreError.message || 'Unknown database error'}`);
         }
     }
@@ -115,7 +116,7 @@ export async function addFoundItem(
     imageFile: File | null
 ) {
     console.log("[addFoundItem] Attempting to add:", itemData, "with image:", !!imageFile);
-    let imageUrl: string | undefined = undefined;
+    let imageUrl: string | null = null; // Initialize to null instead of undefined
 
     if (imageFile) {
          imageUrl = await uploadLostFoundImage(itemData.reporterId, imageFile); // Use helper
@@ -126,9 +127,9 @@ export async function addFoundItem(
             ...itemData,
             type: 'found', // Explicitly set type
             status: 'active',
-            imageUrl: imageUrl, // Add the URL if upload was successful
+            imageUrl: imageUrl, // Use the potentially null imageUrl
             claimers: itemData.claimers || [], // Ensure claimers is an array
-            confirmedClaimer: itemData.confirmedClaimer || null, // Ensure it's null or a value
+            confirmedClaimer: null, // Correctly initialize to null
             createdAt: serverTimestamp(),
             timestamp: itemData.timestamp || Timestamp.now() // Ensure timestamp exists
         };
@@ -153,6 +154,7 @@ export async function addFoundItem(
         if (firestoreError.code === 'permission-denied') {
             throw new Error("Permission denied: Could not save the found item report. Check Firestore Rules.");
         } else {
+             // Ensure we don't throw the original Firestore error directly if it contains complex objects
              throw new Error(`Failed to report found item: ${firestoreError.message || 'Unknown database error'}`);
         }
     }
@@ -329,7 +331,7 @@ export async function confirmClaim(itemId: string, claimerUid: string) {
 /**
  * Deletes a 'found' item post and its associated image (if any).
  */
-export async function deleteFoundItem(itemId: string, imageUrl?: string) {
+export async function deleteFoundItem(itemId: string, imageUrl?: string | null) { // Allow imageUrl to be null
     console.log(`[deleteFoundItem] Attempting to delete found item ${itemId}`);
     const itemRef = doc(db, LOST_AND_FOUND_COLLECTION, itemId);
     try {
