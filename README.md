@@ -1,27 +1,42 @@
-# Firebase Studio
+# IIIT Bhopal Connect
 
-This is a NextJS starter in Firebase Studio.
+This is a Next.js application designed for the students of IIIT Bhopal.
 
-To get started, take a look at src/app/page.tsx.
+## Getting Started
 
-## Troubleshooting
-
-### Failed to load chunk errors
-
-If you encounter errors like `Error: Failed to load chunk /_next/static/chunks/...` during development, especially when using Turbopack (`next dev --turbopack`), try the following steps:
-
-1.  **Restart the Development Server:** Stop the current `next dev` process (Ctrl+C in the terminal) and start it again (`npm run dev` or `yarn dev`).
-2.  **Clear the `.next` directory:** Stop the development server, delete the `.next` folder in your project's root directory, and then restart the development server. This forces a complete rebuild.
-3.  **Clear Browser Cache:** Perform a hard refresh in your browser (Ctrl+Shift+R or Cmd+Shift+R) or clear the browser's cache for `localhost`.
-4.  **Try without Turbopack:** Temporarily remove the `--turbopack` flag from the `dev` script in your `package.json` and run the development server again. This can help determine if the issue is specific to Turbopack.
-    ```json
-    // Example package.json change:
-    "scripts": {
-      "dev": "next dev -p 9002", // Removed --turbopack
-      // ... other scripts
-    },
+1.  **Install dependencies:**
+    ```bash
+    npm install
+    # or
+    yarn install
     ```
-    Remember to add the flag back later if needed.
-5.  **Check Dependencies:** Ensure all dependencies are installed correctly by running `npm install` or `yarn install`. Check for any warnings during the installation process.
+2.  **Set up environment variables:**
+    Create a `.env.local` file in the root directory and add your Firebase project configuration:
+    ```env
+    NEXT_PUBLIC_FIREBASE_API_KEY=YOUR_API_KEY
+    NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN=YOUR_AUTH_DOMAIN
+    NEXT_PUBLIC_FIREBASE_PROJECT_ID=YOUR_PROJECT_ID
+    NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET=YOUR_STORAGE_BUCKET
+    NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID=YOUR_MESSAGING_SENDER_ID
+    NEXT_PUBLIC_FIREBASE_APP_ID=YOUR_APP_ID
 
-These steps often resolve temporary build inconsistencies or caching issues that lead to chunk loading errors.
+    # Optional: For Genkit/Google AI features
+    # GOOGLE_GENAI_API_KEY=YOUR_GOOGLE_AI_API_KEY
+    ```
+3.  **Run the development server:**
+    ```bash
+    npm run dev
+    # or
+    yarn dev
+    ```
+
+Open [http://localhost:9002](http://localhost:9002) (or your configured port) with your browser to see the result.
+
+## Features
+
+*   User Authentication (Sign up/Login)
+*   Student Profile Display
+*   Posts Feed (Create, Read, Vote, Favorite)
+*   Lost & Found (Report Lost/Found, Claim)
+*   Events Feed (Create, Read, Register, Like/Dislike)
+

@@ -21,11 +21,10 @@ export const EventRegistrationsDialog: React.FC<EventRegistrationsDialogProps> =
     const [error, setError] = useState<string | null>(null);
 
     useEffect(() => {
-        // Fetch registrations only when the dialog is open
         if (isOpen) {
             setLoading(true);
             setError(null);
-            setRegistrations([]); // Clear previous
+            setRegistrations([]);
             fetchEventRegistrations(eventId)
                 .then(data => {
                     setRegistrations(data);
@@ -43,11 +42,11 @@ export const EventRegistrationsDialog: React.FC<EventRegistrationsDialogProps> =
     return (
         <Dialog open={isOpen} onOpenChange={setIsOpen}>
             <DialogTrigger asChild>{triggerButton}</DialogTrigger>
-            <DialogContent className="max-w-3xl"> {/* Increased width */} 
+            <DialogContent className="max-w-3xl"> 
                 <DialogHeader>
                     <DialogTitle>Registrations for "{eventTitle}"</DialogTitle>
                 </DialogHeader>
-                <div className="mt-4 max-h-[60vh] overflow-y-auto"> {/* Added scroll */} 
+                <div className="mt-4 max-h-[60vh] overflow-y-auto"> 
                     {loading ? (
                         <div className="text-center p-6"><LoadingSpinner /></div>
                     ) : error ? (
@@ -67,19 +66,20 @@ export const EventRegistrationsDialog: React.FC<EventRegistrationsDialogProps> =
                                     <TableHead>Registered At</TableHead>
                                 </TableRow>
                             </TableHeader>
-                            <TableBody>
-                                {registrations.map((reg) => (
-                                    <TableRow key={reg.uid}> {/* Use UID as key */} 
-                                        <TableCell>{reg.name}</TableCell>
-                                        <TableCell>{reg.scholarNumber}</TableCell>
-                                        <TableCell>{reg.email}</TableCell>
-                                        <TableCell>{reg.phoneNumber || '-'}</TableCell>
-                                        <TableCell>
+                            {/* Ensure no extra whitespace within TableBody before/after map */} 
+                            <TableBody>{/* 
+                                */registrations.map((reg) => (
+                                    <TableRow key={reg.uid}>{/* 
+                                     */}<TableCell>{reg.name}</TableCell>{/* 
+                                     */}<TableCell>{reg.scholarNumber}</TableCell>{/* 
+                                     */}<TableCell>{reg.email}</TableCell>{/* 
+                                     */}<TableCell>{reg.phoneNumber || '-'}</TableCell>{/* 
+                                     */}<TableCell>
                                             {format(reg.registrationTime.toDate(), 'Pp')}
-                                        </TableCell>
-                                    </TableRow>
-                                ))}
-                            </TableBody>
+                                        </TableCell>{/* 
+                                */}</TableRow>
+                                ))}{/* 
+                             */}</TableBody>
                         </Table>
                     )}
                 </div>

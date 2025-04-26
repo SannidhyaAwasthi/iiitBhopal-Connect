@@ -7,20 +7,21 @@ import { db } from '@/config/firebase';
 import { SidebarProvider, Sidebar, SidebarHeader, SidebarContent, SidebarFooter, SidebarTrigger, SidebarInset, SidebarMenu, SidebarMenuItem, SidebarMenuButton } from '@/components/ui/sidebar';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
-import { Home, FileText, Search, Calendar, LogOut, User as UserIcon, ListOrdered, Star, CalendarCheck } from 'lucide-react'; // Existing icons
+import { Home, FileText, Search, Calendar, LogOut, User as UserIconLucide, ListOrdered, ListPlus, Star, CalendarCheck } from 'lucide-react';
 import { signOut } from 'firebase/auth';
 import { auth } from '@/config/firebase';
 import { useRouter } from 'next/navigation';
 import { useToast } from '@/hooks/use-toast';
 import PostsFeed from './posts-feed';
-import { CreatePostForm } from './CreatePostForm';
 import LostAndFoundFeed from './LostAndFoundFeed';
 import { EventsFeed } from './EventsFeed';
 import UserPosts from './user-posts';
 import UserEvents from './user-events';
 import UserFavorites from './user-favorites';
+import UserProfile from './UserProfile';
 import LoadingSpinner from '@/components/loading-spinner';
 import type { StudentProfile } from '@/types';
+import { CreatePostForm } from './CreatePostForm';
 
 const getGreeting = () => {
   const hour = new Date().getHours();
@@ -30,7 +31,7 @@ const getGreeting = () => {
 };
 
 const getInitials = (name: string = '') => {
-  if (!name) return 'U';
+  if (!name) return '?'; // Return ? if no name
   return name
     .split(' ')
     .map((n) => n[0])
@@ -42,7 +43,7 @@ const getInitials = (name: string = '') => {
 export default function Dashboard() {
   const { user } = useAuth();
   const [studentData, setStudentData] = useState<StudentProfile | null>(null);
-  const [activeSection, setActiveSection] = useState('home'); // Start with home
+  const [activeSection, setActiveSection] = useState('home');
   const [loadingData, setLoadingData] = useState(true);
   const router = useRouter();
   const { toast } = useToast();
@@ -53,6 +54,8 @@ export default function Dashboard() {
       if (user) {
         setLoadingData(true);
         try {
+          // REMOVED Guest user check - assume all users are students
+
           const uidMapRef = doc(db, 'students-by-uid', user.uid);
           const uidMapSnap = await getDoc(uidMapRef);
           if (!uidMapSnap.exists()) throw new Error("Student UID mapping not found.");
@@ -79,6 +82,7 @@ export default function Dashboard() {
 
         } catch (error: any) {
           console.error("Error fetching student data:", error);
+            // Set fallback data on error 
             setStudentData({
                 name: user.displayName || "Student",
                 scholarNumber: "N/A", email: user.email || "N/A",
@@ -111,36 +115,43 @@ export default function Dashboard() {
     }
   };
 
+  // REMOVED isGuest variable
+
   // --- Render Content based on Active Section ---
   const renderContent = () => {
-     if (loadingData) return <LoadingSpinner />;
+     if (loadingData && !studentData) return <LoadingSpinner />;
      if (!user) {
-        // Redirect handled by parent page.tsx, show spinner while redirecting
+        router.push('/login');
         return <LoadingSpinner />;
      }
-      if (!studentData && !loadingData) {
-         // Profile fetch failed but user is logged in
-         return <div className="p-4 text-center text-red-500">Failed to load profile data. Please try refreshing or contact support if the issue persists.</div>;
+     if (!studentData) { // Added check if student data load failed critically
+         return <div className="p-4 text-center text-red-500">Failed to load profile data. Please try refreshing.</div>;
      }
 
     switch (activeSection) {
        case 'home':
          return <div className="text-center py-10 text-xl font-semibold">Homepage Placeholder</div>;
+       case 'profile':
+         return <UserProfile studentData={studentData} user={user}/>;
        case 'posts':
-         // Pass studentData and setActiveSection
+         // Removed isGuest prop 
          return <PostsFeed setActiveSection={setActiveSection} studentData={studentData} />;
        case 'create-post':
+         // Removed isGuest check
          return <CreatePostForm />;
        case 'lost-found':
          return <LostAndFoundFeed user={user} studentData={studentData} />;
        case 'events':
-          // Pass setActiveSection to EventsFeed
+          // Pass setActiveSection here
           return <EventsFeed user={user} studentData={studentData} setActiveSection={setActiveSection} />;
        case 'my-posts':
+         // Removed isGuest check
          return <UserPosts user={user} studentData={studentData} />;
        case 'my-events':
+         // Removed isGuest check
           return <UserEvents user={user} studentData={studentData} />;
        case 'my-favorites':
+         // Removed isGuest check
           return <UserFavorites user={user} studentData={studentData} />;
        default:
           return <div className="text-center py-10 text-xl font-semibold">Homepage Placeholder</div>;
@@ -148,9 +159,8 @@ export default function Dashboard() {
   };
 
    const greeting = studentData ? `${getGreeting()}, ${studentData.name}` : getGreeting();
-   const initials = studentData ? getInitials(studentData.name) : 'U';
+   const initials = studentData ? getInitials(studentData.name) : '?'; // Use ? if data fails
 
-  // Ensure structure and syntax are correct before the return statement
   return (
     <SidebarProvider>
       <Sidebar>
@@ -174,6 +184,11 @@ export default function Dashboard() {
                       </SidebarMenuButton>
                  </SidebarMenuItem>
                  <SidebarMenuItem>
+                     <SidebarMenuButton onClick={() => setActiveSection('profile')} isActive={activeSection === 'profile'} tooltip="My Profile">
+                         <UserIconLucide /> <span>Profile</span>
+                     </SidebarMenuButton>
+                 </SidebarMenuItem>
+                 <SidebarMenuItem>
                       <SidebarMenuButton onClick={() => setActiveSection('posts')} isActive={activeSection === 'posts'} tooltip="Posts Feed">
                          <FileText /> <span>Posts</span>
                       </SidebarMenuButton>
@@ -189,27 +204,26 @@ export default function Dashboard() {
                       </SidebarMenuButton>
                    </SidebarMenuItem>
 
-                   {/* --- User Content Submenu --- */}
-                   {user && (
-                     <>
-                       <p className="text-xs font-semibold text-sidebar-foreground/60 px-3 pt-4 pb-1">Your Content</p>
-                       <SidebarMenuItem>
-                           <SidebarMenuButton onClick={() => setActiveSection('my-posts')} isActive={activeSection === 'my-posts'} tooltip="My Posts">
-                               <UserIcon /> <span>My Posts</span>
-                           </SidebarMenuButton>
-                       </SidebarMenuItem>
-                       <SidebarMenuItem>
-                           <SidebarMenuButton onClick={() => setActiveSection('my-events')} isActive={activeSection === 'my-events'} tooltip="My Events">
-                               <CalendarCheck /> <span>My Events</span>
-                           </SidebarMenuButton>
-                       </SidebarMenuItem>
-                       <SidebarMenuItem>
-                            <SidebarMenuButton onClick={() => setActiveSection('my-favorites')} isActive={activeSection === 'my-favorites'} tooltip="Favorites">
-                                <Star /> <span>Favorites</span>
-                           </SidebarMenuButton>
-                       </SidebarMenuItem>
-                     </>
-                   )}
+                  {/* --- User Content Submenu --- */} 
+                  {/* Removed isGuest check */} 
+                  <>
+                    <p className="text-xs font-semibold text-sidebar-foreground/60 px-3 pt-4 pb-1">Your Content</p>
+                    <SidebarMenuItem>
+                        <SidebarMenuButton onClick={() => setActiveSection('my-posts')} isActive={activeSection === 'my-posts'} tooltip="My Posts">
+                            <ListOrdered /> <span>My Posts</span>
+                        </SidebarMenuButton>
+                    </SidebarMenuItem>
+                    <SidebarMenuItem>
+                        <SidebarMenuButton onClick={() => setActiveSection('my-events')} isActive={activeSection === 'my-events'} tooltip="My Events">
+                            <CalendarCheck /> <span>My Events</span>
+                        </SidebarMenuButton>
+                    </SidebarMenuItem>
+                    <SidebarMenuItem>
+                        <SidebarMenuButton onClick={() => setActiveSection('my-favorites')} isActive={activeSection === 'my-favorites'} tooltip="My Favorites">
+                            <Star /> <span>My Favorites</span>
+                        </SidebarMenuButton>
+                    </SidebarMenuItem>
+                  </>
              </SidebarMenu>
         </SidebarContent>
         <SidebarFooter className="p-2">
