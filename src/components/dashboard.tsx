@@ -7,12 +7,13 @@ import { db } from '@/config/firebase';
 import { SidebarProvider, Sidebar, SidebarHeader, SidebarContent, SidebarFooter, SidebarTrigger, SidebarInset, SidebarMenu, SidebarMenuItem, SidebarMenuButton } from '@/components/ui/sidebar';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
-import { Home, FileText, Search, Calendar, LogOut, User as UserIcon, ListOrdered, Star, CalendarCheck } from 'lucide-react'; // Removed ListPlus, added CalendarCheck
+import { Home, FileText, Search, Calendar, LogOut, User as UserIcon, ListOrdered, Star, CalendarCheck } from 'lucide-react'; // Existing icons
 import { signOut } from 'firebase/auth';
 import { auth } from '@/config/firebase';
 import { useRouter } from 'next/navigation';
 import { useToast } from '@/hooks/use-toast';
 import PostsFeed from './posts-feed';
+import { CreatePostForm } from './CreatePostForm';
 import LostAndFoundFeed from './LostAndFoundFeed';
 import { EventsFeed } from './EventsFeed';
 import UserPosts from './user-posts';
@@ -20,7 +21,6 @@ import UserEvents from './user-events';
 import UserFavorites from './user-favorites';
 import LoadingSpinner from '@/components/loading-spinner';
 import type { StudentProfile } from '@/types';
-import { CreatePostForm } from './CreatePostForm'; // Keep this if needed elsewhere
 
 const getGreeting = () => {
   const hour = new Date().getHours();
@@ -115,10 +115,12 @@ export default function Dashboard() {
   const renderContent = () => {
      if (loadingData) return <LoadingSpinner />;
      if (!user) {
+        // Redirect handled by parent page.tsx, show spinner while redirecting
         return <LoadingSpinner />;
      }
-      if (!studentData) {
-         return <div className="p-4 text-center text-red-500">Failed to load profile data. Please try refreshing.</div>;
+      if (!studentData && !loadingData) {
+         // Profile fetch failed but user is logged in
+         return <div className="p-4 text-center text-red-500">Failed to load profile data. Please try refreshing or contact support if the issue persists.</div>;
      }
 
     switch (activeSection) {
@@ -127,7 +129,7 @@ export default function Dashboard() {
        case 'posts':
          // Pass studentData and setActiveSection
          return <PostsFeed setActiveSection={setActiveSection} studentData={studentData} />;
-       case 'create-post': // This case might be handled within PostsFeed now
+       case 'create-post':
          return <CreatePostForm />;
        case 'lost-found':
          return <LostAndFoundFeed user={user} studentData={studentData} />;
@@ -148,6 +150,7 @@ export default function Dashboard() {
    const greeting = studentData ? `${getGreeting()}, ${studentData.name}` : getGreeting();
    const initials = studentData ? getInitials(studentData.name) : 'U';
 
+  // Ensure structure and syntax are correct before the return statement
   return (
     <SidebarProvider>
       <Sidebar>
@@ -190,13 +193,21 @@ export default function Dashboard() {
                    {user && (
                      <>
                        <p className="text-xs font-semibold text-sidebar-foreground/60 px-3 pt-4 pb-1">Your Content</p>
-                       {/* Your Posts Button removed from here */}
+                       <SidebarMenuItem>
+                           <SidebarMenuButton onClick={() => setActiveSection('my-posts')} isActive={activeSection === 'my-posts'} tooltip="My Posts">
+                               <UserIcon /> <span>My Posts</span>
+                           </SidebarMenuButton>
+                       </SidebarMenuItem>
                        <SidebarMenuItem>
                            <SidebarMenuButton onClick={() => setActiveSection('my-events')} isActive={activeSection === 'my-events'} tooltip="My Events">
                                <CalendarCheck /> <span>My Events</span>
                            </SidebarMenuButton>
                        </SidebarMenuItem>
-                       {/* Favorites Button removed from here */}
+                       <SidebarMenuItem>
+                            <SidebarMenuButton onClick={() => setActiveSection('my-favorites')} isActive={activeSection === 'my-favorites'} tooltip="Favorites">
+                                <Star /> <span>Favorites</span>
+                           </SidebarMenuButton>
+                       </SidebarMenuItem>
                      </>
                    )}
              </SidebarMenu>

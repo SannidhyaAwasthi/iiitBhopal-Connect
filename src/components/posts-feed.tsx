@@ -16,7 +16,7 @@ import {
     getDoc,
     where // Ensure where is imported
 } from 'firebase/firestore';
-import { PostCard } from './PostCard';
+import { PostCard } from './PostCard'; // Import PostCard directly
 import LoadingSpinner from './loading-spinner';
 import { Button } from '@/components/ui/button'; // Import Button
 import { PlusCircle, User as UserIcon, Star } from 'lucide-react'; // Icons for buttons, added Star
@@ -32,11 +32,12 @@ export interface Post {
     title: string;
     body: string;
     imageUrls?: string[];
-    timestamp: Timestamp;
+    timestamp: Timestamp; // Firestore Timestamp for creation
+    lastEdited?: Timestamp; // Firestore Timestamp for last edit
     upvotesCount: number;
     downvotesCount: number;
-    hotScore?: number;
-    tags: string[];
+    hotScore: number; // Calculated score for sorting
+    tags: string[]; // Search tags (e.g., author details, keywords)
     visibility: {
         branches: string[];
         yearsOfPassing: number[];
@@ -48,7 +49,6 @@ export interface Post {
 
 interface PostsFeedProps {
     setActiveSection: (section: string) => void;
-    // Removed isGuest prop
     studentData: StudentProfile | null; // Pass studentData down
 }
 
@@ -149,10 +149,10 @@ const PostsFeed: FC<PostsFeedProps> = ({ setActiveSection, studentData: initialS
                  const isYearVisible = post.visibility?.yearsOfPassing?.length === 0 || post.visibility?.yearsOfPassing?.includes(profile.yearOfPassing);
                  const isGenderVisible = post.visibility?.genders?.length === 0 || post.visibility?.genders?.includes(profile.gender);
 
-                 console.log(`[PostsFeed Filter] Post ID: ${post.id}, Visible: ${isBranchVisible && isYearVisible && isGenderVisible}`);
+                 // console.log(`[PostsFeed Filter] Post ID: ${post.id}, Visible: ${isBranchVisible && isYearVisible && isGenderVisible}`);
                  return isBranchVisible && isYearVisible && isGenderVisible;
              }) : postsToProcess; // If no profile (e.g., logged out, but read allowed), show all fetched
-            console.log(`[PostsFeed] ${visiblePosts.length} posts remaining after client-side filtering.`);
+            // console.log(`[PostsFeed] ${visiblePosts.length} posts remaining after client-side filtering.`);
 
 
              // Fetch Vote/Favorite Status for visible posts for logged-in user
@@ -160,16 +160,16 @@ const PostsFeed: FC<PostsFeedProps> = ({ setActiveSection, studentData: initialS
              let voteStatuses: Record<string, 'up' | 'down' | null> = {};
              let favoritePostIds: string[] = [];
 
-             console.log(`[PostsFeed] User ${user?.uid ? 'logged in' : 'not logged in'}. Attempting to fetch vote/favorite status for ${visiblePostIds.length} posts.`);
+             // console.log(`[PostsFeed] User ${user?.uid ? 'logged in' : 'not logged in'}. Attempting to fetch vote/favorite status for ${visiblePostIds.length} posts.`);
              if (user && visiblePostIds.length > 0) {
                  try {
-                     console.log("[PostsFeed] Calling getPostsVoteStatus and getFavoritePostIds for user:", user.uid, "and post IDs:", visiblePostIds);
+                     // console.log("[PostsFeed] Calling getPostsVoteStatus and getFavoritePostIds for user:", user.uid, "and post IDs:", visiblePostIds);
                      [voteStatuses, favoritePostIds] = await Promise.all([
                          getPostsVoteStatus(user.uid, visiblePostIds),
                          getFavoritePostIds(user.uid)
                      ]);
-                     console.log("[PostsFeed] Received voteStatuses:", voteStatuses);
-                     console.log("[PostsFeed] Received favoritePostIds:", favoritePostIds);
+                     // console.log("[PostsFeed] Received voteStatuses:", voteStatuses);
+                     // console.log("[PostsFeed] Received favoritePostIds:", favoritePostIds);
 
                  } catch (statusError) {
                      console.error("Error fetching vote/favorite status:", statusError);
@@ -182,7 +182,7 @@ const PostsFeed: FC<PostsFeedProps> = ({ setActiveSection, studentData: initialS
                 isFavorite: user ? favoritePostIds.includes(post.id) : false, // Only set if user logged in
             }));
 
-            console.log("[PostsFeed] Posts with user status:", postsWithStatus);
+            // console.log("[PostsFeed] Posts with user status:", postsWithStatus);
 
 
             setPosts(prevPosts => loadMore ? [...prevPosts, ...postsWithStatus] : postsWithStatus);
@@ -204,7 +204,7 @@ const PostsFeed: FC<PostsFeedProps> = ({ setActiveSection, studentData: initialS
             if (shouldSetInitialLoading) setIsLoadingPosts(false);
             setIsLoadingMore(false);
             isFetchingRef.current = false;
-            console.log("[PostsFeed] Fetch finished.");
+            // console.log("[PostsFeed] Fetch finished.");
         }
     }, [user, studentData, sortOption, hasMore, lastVisible]); // Dependencies updated
 
@@ -216,7 +216,7 @@ const PostsFeed: FC<PostsFeedProps> = ({ setActiveSection, studentData: initialS
         const authIsReady = !isLoadingUser;
 
         if (authIsReady && profileIsReady && !initialLoadDoneRef.current) {
-            console.log("[PostsFeed Effect] Conditions met, triggering initial fetch.");
+            // console.log("[PostsFeed Effect] Conditions met, triggering initial fetch.");
             setPosts([]);
             setLastVisible(null);
             setHasMore(true);
@@ -224,7 +224,7 @@ const PostsFeed: FC<PostsFeedProps> = ({ setActiveSection, studentData: initialS
             fetchPosts(false); // Initial fetch
             initialLoadDoneRef.current = true; // Mark initial load as done
         } else {
-             console.log(`[PostsFeed Effect] Skipping fetch. AuthReady: ${authIsReady}, ProfileReady: ${profileIsReady}, InitialLoadDone: ${initialLoadDoneRef.current}`);
+             // console.log(`[PostsFeed Effect] Skipping fetch. AuthReady: ${authIsReady}, ProfileReady: ${profileIsReady}, InitialLoadDone: ${initialLoadDoneRef.current}`);
         }
 
     // Depend on user, studentData, sortOption, isLoadingUser
@@ -243,7 +243,7 @@ const PostsFeed: FC<PostsFeedProps> = ({ setActiveSection, studentData: initialS
 
         observer.current = new IntersectionObserver(entries => {
             if (entries[0].isIntersecting) {
-                console.log("[PostsFeed] Intersection observer triggered load more.");
+                // console.log("[PostsFeed] Intersection observer triggered load more.");
                 fetchPosts(true); // Load more posts
             }
         }, { rootMargin: '200px', threshold: 0 });
@@ -301,7 +301,7 @@ const PostsFeed: FC<PostsFeedProps> = ({ setActiveSection, studentData: initialS
                               size="sm"
                           >
                                <UserIcon className="mr-2 h-4 w-4" />
-                               Your Posts
+                               My Posts
                            </Button>
                            <Button
                               onClick={() => setActiveSection('my-favorites')}
