@@ -7,7 +7,7 @@ import { db } from '@/config/firebase';
 import { SidebarProvider, Sidebar, SidebarHeader, SidebarContent, SidebarFooter, SidebarTrigger, SidebarInset, SidebarMenu, SidebarMenuItem, SidebarMenuButton } from '@/components/ui/sidebar';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
-import { Home, FileText, Search, Calendar, LogOut, User as UserIcon, ListOrdered, ListPlus, Star, CalendarCheck } from 'lucide-react';
+import { Home, FileText, Search, Calendar, LogOut, User as UserIcon, ListOrdered, Star, CalendarCheck } from 'lucide-react'; // Removed ListPlus, added CalendarCheck
 import { signOut } from 'firebase/auth';
 import { auth } from '@/config/firebase';
 import { useRouter } from 'next/navigation';
@@ -20,7 +20,7 @@ import UserEvents from './user-events';
 import UserFavorites from './user-favorites';
 import LoadingSpinner from '@/components/loading-spinner';
 import type { StudentProfile } from '@/types';
-import { CreatePostForm } from './CreatePostForm';
+import { CreatePostForm } from './CreatePostForm'; // Keep this if needed elsewhere
 
 const getGreeting = () => {
   const hour = new Date().getHours();
@@ -30,7 +30,6 @@ const getGreeting = () => {
 };
 
 const getInitials = (name: string = '') => {
-  // Return 'U' for User if name is empty or unavailable
   if (!name) return 'U';
   return name
     .split(' ')
@@ -54,7 +53,6 @@ export default function Dashboard() {
       if (user) {
         setLoadingData(true);
         try {
-          // Removed guest user check
           const uidMapRef = doc(db, 'students-by-uid', user.uid);
           const uidMapSnap = await getDoc(uidMapRef);
           if (!uidMapSnap.exists()) throw new Error("Student UID mapping not found.");
@@ -81,7 +79,6 @@ export default function Dashboard() {
 
         } catch (error: any) {
           console.error("Error fetching student data:", error);
-            // Fallback to basic user info if profile fetch fails
             setStudentData({
                 name: user.displayName || "Student",
                 scholarNumber: "N/A", email: user.email || "N/A",
@@ -114,16 +111,12 @@ export default function Dashboard() {
     }
   };
 
-  // Removed isGuest constant
-
   // --- Render Content based on Active Section ---
   const renderContent = () => {
      if (loadingData) return <LoadingSpinner />;
      if (!user) {
-        // Redirect should be handled by page.tsx or similar logic
-        return <LoadingSpinner />; // Show spinner while potentially redirecting
+        return <LoadingSpinner />;
      }
-      // Check if profile data is missing after loading attempted
       if (!studentData) {
          return <div className="p-4 text-center text-red-500">Failed to load profile data. Please try refreshing.</div>;
      }
@@ -132,14 +125,15 @@ export default function Dashboard() {
        case 'home':
          return <div className="text-center py-10 text-xl font-semibold">Homepage Placeholder</div>;
        case 'posts':
-         // Pass studentData directly, remove isGuest
+         // Pass studentData and setActiveSection
          return <PostsFeed setActiveSection={setActiveSection} studentData={studentData} />;
-       case 'create-post':
-         return <CreatePostForm />; // Allow creation if user exists and profile loaded
+       case 'create-post': // This case might be handled within PostsFeed now
+         return <CreatePostForm />;
        case 'lost-found':
          return <LostAndFoundFeed user={user} studentData={studentData} />;
        case 'events':
-          return <EventsFeed user={user} studentData={studentData} />;
+          // Pass setActiveSection to EventsFeed
+          return <EventsFeed user={user} studentData={studentData} setActiveSection={setActiveSection} />;
        case 'my-posts':
          return <UserPosts user={user} studentData={studentData} />;
        case 'my-events':
@@ -152,7 +146,7 @@ export default function Dashboard() {
   };
 
    const greeting = studentData ? `${getGreeting()}, ${studentData.name}` : getGreeting();
-   const initials = studentData ? getInitials(studentData.name) : 'U'; // Default to 'U' for User
+   const initials = studentData ? getInitials(studentData.name) : 'U';
 
   return (
     <SidebarProvider>
@@ -160,7 +154,6 @@ export default function Dashboard() {
         <SidebarHeader className="p-4 items-center">
            <div className="flex items-center gap-3">
              <Avatar className="h-10 w-10">
-               {/* Use initials based on fetched name or 'U' */}
                <AvatarFallback>{initials}</AvatarFallback>
              </Avatar>
               <div>
@@ -193,25 +186,17 @@ export default function Dashboard() {
                       </SidebarMenuButton>
                    </SidebarMenuItem>
 
-                   {/* --- User Content Submenu (always show if user is logged in) --- */}
+                   {/* --- User Content Submenu --- */}
                    {user && (
                      <>
                        <p className="text-xs font-semibold text-sidebar-foreground/60 px-3 pt-4 pb-1">Your Content</p>
-                       <SidebarMenuItem>
-                           <SidebarMenuButton onClick={() => setActiveSection('my-posts')} isActive={activeSection === 'my-posts'} tooltip="My Posts">
-                               <ListOrdered /> <span>My Posts</span>
-                           </SidebarMenuButton>
-                       </SidebarMenuItem>
+                       {/* Your Posts Button removed from here */}
                        <SidebarMenuItem>
                            <SidebarMenuButton onClick={() => setActiveSection('my-events')} isActive={activeSection === 'my-events'} tooltip="My Events">
                                <CalendarCheck /> <span>My Events</span>
                            </SidebarMenuButton>
                        </SidebarMenuItem>
-                       <SidebarMenuItem>
-                           <SidebarMenuButton onClick={() => setActiveSection('my-favorites')} isActive={activeSection === 'my-favorites'} tooltip="My Favorites">
-                               <Star /> <span>My Favorites</span>
-                           </SidebarMenuButton>
-                       </SidebarMenuItem>
+                       {/* Favorites Button removed from here */}
                      </>
                    )}
              </SidebarMenu>

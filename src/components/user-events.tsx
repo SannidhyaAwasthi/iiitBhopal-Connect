@@ -6,7 +6,7 @@ import LoadingSpinner from './loading-spinner';
 import { fetchUserEvents, deleteEvent } from '@/lib/eventActions'; // Import the actions
 import { useToast } from '@/hooks/use-toast';
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Edit, Trash2, Users } from 'lucide-react'; // Icons for buttons
+import { Edit, Trash2, Users, Loader2 } from 'lucide-react'; // Icons for buttons, Added Loader2
 import { EventRegistrationsDialog } from './EventRegistrationsDialog'; // Import Registrations Dialog
 import { EditEventForm } from './EditEventForm'; // Import Edit Form Dialog
 
@@ -18,6 +18,7 @@ interface UserEventsProps {
 const UserEvents: React.FC<UserEventsProps> = ({ user, studentData }) => {
     const [myEvents, setMyEvents] = useState<Event[]>([]);
     const [loading, setLoading] = useState(true);
+    const [deletingId, setDeletingId] = useState<string | null>(null); // Track deleting state
     const [error, setError] = useState<string | null>(null);
     const [selectedEventForEdit, setSelectedEventForEdit] = useState<Event | null>(null);
     const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
@@ -38,7 +39,6 @@ const UserEvents: React.FC<UserEventsProps> = ({ user, studentData }) => {
             setMyEvents(events);
         } catch (err: any) {
             console.error("Error fetching user events:", err);
-            // Handle specific Firebase permission errors
              if (err.code === 'permission-denied') {
                  setError("You don't have permission to view your events (check Firestore rules).");
              } else {
@@ -58,15 +58,20 @@ const UserEvents: React.FC<UserEventsProps> = ({ user, studentData }) => {
     // --- Handle Delete ---
     const handleDelete = async (eventId: string, posterUrl?: string | null) => {
         if (!window.confirm("Are you sure you want to delete this event? This action cannot be undone.")) return;
+        setDeletingId(eventId); // Set deleting state
         const originalEvents = [...myEvents];
+        // Optimistic UI update
         setMyEvents(prevEvents => prevEvents.filter(event => event.id !== eventId));
         try {
             await deleteEvent(eventId, posterUrl);
             toast({ title: "Event Deleted Successfully" });
+            // No need to call loadUserEvents, optimistic update handles it
         } catch (error: any) {
             console.error("Error deleting event:", error);
             toast({ variant: "destructive", title: "Delete Failed", description: error.message });
             setMyEvents(originalEvents); // Revert optimistic update on error
+        } finally {
+            setDeletingId(null); // Reset deleting state
         }
     };
 
@@ -90,7 +95,6 @@ const UserEvents: React.FC<UserEventsProps> = ({ user, studentData }) => {
         return <Alert variant="destructive"><AlertDescription>{error}</AlertDescription></Alert>;
     }
 
-    // This check should ideally be handled by the parent (Dashboard), but added here for safety
     if (!user) {
         return <p className="text-center py-10 text-muted-foreground">Please log in to view your events.</p>;
     }
@@ -106,7 +110,6 @@ const UserEvents: React.FC<UserEventsProps> = ({ user, studentData }) => {
 
             {error && <Alert variant="destructive"><AlertDescription>{error}</AlertDescription></Alert>}
 
-            {/* Removed loading check here as it's handled above */}
             <div className="space-y-4">
                 {myEvents.map(event => (
                     <div key={event.id} className="p-4 border rounded-lg flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 hover:shadow-sm transition-shadow duration-150">
@@ -131,14 +134,14 @@ const UserEvents: React.FC<UserEventsProps> = ({ user, studentData }) => {
                             />
 
                             {/* Edit Button */}
-                            <Button variant="outline" size="sm" onClick={() => handleEdit(event)} title="Edit Event">
+                            <Button variant="outline" size="sm" onClick={() => handleEdit(event)} title="Edit Event" disabled={deletingId === event.id}>
                                 <Edit className="h-4 w-4 mr-1 sm:mr-0 lg:mr-1" />
                                 <span className="hidden sm:inline">Edit</span>
                             </Button>
 
                             {/* Delete Button */}
-                            <Button variant="destructive" size="sm" onClick={() => handleDelete(event.id, event.poster)} title="Delete Event">
-                                <Trash2 className="h-4 w-4 mr-1 sm:mr-0 lg:mr-1" />
+                            <Button variant="destructive" size="sm" onClick={() => handleDelete(event.id, event.poster)} title="Delete Event" disabled={deletingId === event.id}>
+                                {deletingId === event.id ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4 mr-1 sm:mr-0 lg:mr-1" />}
                                 <span className="hidden sm:inline">Delete</span>
                             </Button>
                         </div>
