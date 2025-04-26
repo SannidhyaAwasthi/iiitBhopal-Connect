@@ -2,94 +2,160 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
+    // --- Helper Functions ---
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isAdmin() {
+      // Check if the requesting user's UID exists in the 'admins' collection
+      // Ensure you have an 'admins' collection where document IDs are user UIDs
+      // and each document has an 'isAdmin: true' field.
+      return isAuthenticated() && exists(/databases/$(database)/documents/admins/$(request.auth.uid));
+    }
+
+    // Function to check if the request only modifies specific fields
+    function isUpdatingFields(allowedFields) {
+      return request.resource.data.diff(resource.data).affectedKeys().hasOnly(allowedFields);
+    }
+
     // --- Student Data Rules ---
     match /students/{scholarNum} {
-      allow create: if request.auth != null
+      allow create: if isAuthenticated()
                           && request.resource.data.uid == request.auth.uid
                           && request.resource.id == request.resource.data.scholarNumber;
-      allow read: if request.auth != null; // Allow any authenticated user to read student profiles (needed for claimer info)
-      allow update, delete: if request.auth != null && (request.auth.uid == resource.data.uid || isAdmin());
+      allow read: if isAuthenticated();
+      allow update, delete: if isAuthenticated() && (request.auth.uid == resource.data.uid || isAdmin());
     }
 
     match /students-by-uid/{userId} {
-      allow create: if request.auth != null && request.auth.uid == userId;
-      // MODIFIED: Allow any authenticated user to read the UID -> scholarNumber mapping
-      allow read: if request.auth != null; 
+      allow create: if isAuthenticated() && request.auth.uid == userId;
+      allow read: if isAuthenticated(); // Allow any authenticated user to read mappings (needed for profile lookups)
       allow update, delete: if false || isAdmin();
     }
 
     // --- Posts Rules ---
     match /posts/{postId} {
-      allow read: if request.auth != null;
-      allow create: if request.auth != null;
-      allow update: if request.auth != null && (
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated();
+      // Owner or admin can update any field. Anyone can update votes.
+      allow update: if isAuthenticated() && (
           (resource.data.authorId == request.auth.uid || isAdmin()) ||
-          (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['upvotesCount', 'downvotesCount']))
+          isUpdatingFields(['upvotesCount', 'downvotesCount']) // Allow anyone to update vote counts
        );
-      allow delete: if request.auth != null && (resource.data.authorId == request.auth.uid || isAdmin());
+      allow delete: if isAuthenticated() && (resource.data.authorId == request.auth.uid || isAdmin());
     }
 
     // --- Post Votes Rules ---
     match /post_votes/{voteId} {
-      allow get: if request.auth != null && voteId.split('_')[0] == request.auth.uid;
-      allow list: if request.auth != null && request.query.userId == request.auth.uid; // Use request.query.userId
-      allow read: if request.auth != null && request.auth.uid == resource.data.userId;
-      allow create, update: if request.auth != null
+      allow get: if isAuthenticated() && voteId.split('_')[0] == request.auth.uid;
+      allow list: if isAuthenticated() && request.query.userId == request.auth.uid;
+      allow read: if isAuthenticated() && request.auth.uid == resource.data.userId;
+      allow create, update: if isAuthenticated()
          && request.auth.uid == request.resource.data.userId
          && voteId == request.auth.uid + "_" + request.resource.data.postId;
-      allow delete: if request.auth != null && resource.data.userId == request.auth.uid;
+      allow delete: if isAuthenticated() && resource.data.userId == request.auth.uid;
     }
 
     // --- Favorite Posts Rules ---
     match /favoritePosts/{favoriteId} {
-      allow get: if request.auth != null && favoriteId.split('_')[0] == request.auth.uid;
-      allow list: if request.auth != null && request.query.userId == request.auth.uid; // Use request.query.userId
-      allow read: if request.auth != null && request.auth.uid == resource.data.userId;
-      allow create: if request.auth != null
+      allow get: if isAuthenticated() && favoriteId.split('_')[0] == request.auth.uid;
+      allow list: if isAuthenticated() && request.query.userId == request.auth.uid;
+      allow read: if isAuthenticated() && request.auth.uid == resource.data.userId;
+      allow create: if isAuthenticated()
          && request.auth.uid == request.resource.data.userId
          && favoriteId == request.auth.uid + "_" + request.resource.data.postId;
-      allow delete: if request.auth != null && resource.data.userId == request.auth.uid;
+      allow delete: if isAuthenticated() && resource.data.userId == request.auth.uid;
     }
 
     // --- Lost and Found Rules ---
     match /lostAndFound/{itemId} {
-      // Allow any authenticated user to read any lost/found item.
-      allow read: if request.auth != null;
-
-      // Allow authenticated users to create new lost/found items.
-      allow create: if request.auth != null && request.auth.uid == request.resource.data.reporterId;
-
-      // Allow updates based on the action:
-      allow update: if request.auth != null && (
-          // Reporter confirming a claim
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && request.auth.uid == request.resource.data.reporterId;
+      allow update: if isAuthenticated() && (
+          // Owner confirms claim
           (resource.data.reporterId == request.auth.uid &&
-           request.resource.data.status == 'inactive' && 
-           request.resource.data.confirmedClaimer is string && 
-           request.resource.data.claimers is list && request.resource.data.claimers.size() == 0
+           resource.data.type == 'found' && // Only found items can be confirmed
+           request.resource.data.status == 'inactive' &&
+           request.resource.data.confirmedClaimer is string &&
+           request.resource.data.claimers is list && request.resource.data.claimers.size() == 0 &&
+           isUpdatingFields(['status', 'confirmedClaimer', 'claimers'])
           ) ||
-          // Any user claiming/unclaiming
-          (request.resource.data.diff(resource.data).affectedKeys().hasOnly(['claimers'])) ||
-          // *** NEW: Allow any authenticated user to mark a 'lost' item as 'inactive' when found ***
-          (resource.data.type == 'lost' && 
-           resource.data.status == 'active' && 
-           request.resource.data.status == 'inactive' && 
-           request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status'])
+          // Any user claims/unclaims a found item
+          (resource.data.type == 'found' && isUpdatingFields(['claimers'])) ||
+          // Any user reports a lost item as found (updates lost item status)
+          (resource.data.type == 'lost' &&
+           resource.data.status == 'active' &&
+           request.resource.data.status == 'inactive' &&
+           isUpdatingFields(['status'])
           )
       );
-
-      // Allow reporter to delete their own post.
-      allow delete: if request.auth != null && resource.data.reporterId == request.auth.uid;
+      allow delete: if isAuthenticated() && resource.data.reporterId == request.auth.uid;
     }
 
-    // Admin collection (example)
+    // --- Event Rules ---
+    match /events/{eventId} {
+      allow read: if isAuthenticated(); // Simplistic read for now, consider visibility later
+
+      allow create: if isAuthenticated()
+                      && request.auth.uid == request.resource.data.postedBy
+                      // Add validation for required fields during creation
+                      && request.resource.data.title is string && request.resource.data.title.size() > 0
+                      && request.resource.data.description is string // Allow empty description if needed
+                      && request.resource.data.venue is string && request.resource.data.venue.size() > 0
+                      && request.resource.data.postedByName is string && request.resource.data.postedByName.size() > 0
+                      && request.resource.data.postedByScholarNumber is string && request.resource.data.postedByScholarNumber.size() > 0
+                      && request.resource.data.eventLink is string && request.resource.data.eventLink.size() > 0
+                      && request.resource.data.numberOfRegistrations == 0
+                      && request.resource.data.likes is list && request.resource.data.likes.size() == 0
+                      && request.resource.data.dislikes is list && request.resource.data.dislikes.size() == 0
+                      && request.resource.data.createdAt == request.time // Ensure createdAt is set by server
+                      // Ensure visibility structure is correct
+                      && request.resource.data.visibility.branches is list
+                      && request.resource.data.visibility.yearsOfPassing is list
+                      && request.resource.data.visibility.genders is list;
+
+
+       // *** REVISED EVENT UPDATE RULE ***
+       allow update: if isAuthenticated() && (
+            // Condition 1: Owner updates allowed fields
+            (
+              request.auth.uid == resource.data.postedBy &&
+              isUpdatingFields(['title', 'description', 'venue', 'location', 'startTime', 'endTime', 'poster', 'visibility'])
+            )
+            ||
+            // Condition 2: Any authenticated user updates likes/dislikes
+            isUpdatingFields(['likes', 'dislikes'])
+            ||
+            // Condition 3: Registration count updates (should ideally be transactional, but allow for now if needed)
+            isUpdatingFields(['numberOfRegistrations'])
+          );
+
+      allow delete: if isAuthenticated()
+                      && (resource.data.postedBy == request.auth.uid || isAdmin());
+
+      // --- Event Registrations Subcollection ---
+      match /registrations/{userId} {
+        allow get: if isAuthenticated()
+                     && (request.auth.uid == userId || isAdmin() || get(/databases/$(database)/documents/events/$(eventId)).data.postedBy == request.auth.uid);
+        allow list: if isAuthenticated()
+                      && (isAdmin() || get(/databases/$(database)/documents/events/$(eventId)).data.postedBy == request.auth.uid);
+        allow create: if isAuthenticated()
+                        && request.auth.uid == userId
+                        && request.resource.data.uid == request.auth.uid
+                        && request.resource.data.eventId == eventId
+                        && request.resource.data.registrationTime == request.time; // Ensure timestamp set by server
+        allow update: if false; // Prevent updates to registrations
+        allow delete: if isAuthenticated() && request.auth.uid == userId; // Allow user to delete their own registration
+      }
+    }
+
+    // --- Admin collection (example) ---
     match /admins/{userId} {
-      allow read: if true; // Or restrict as needed
+      allow read: if true; // Example: Allow anyone to read admin list (adjust as needed)
+      allow write: if isAdmin(); // Example: Only admins can modify admin list
     }
-  }
+  } // End match /databases/{database}/documents
+} // End service cloud.firestore
 
-  // --- Helper Functions ---
-  function isAdmin() {
-    // Check if the requesting user's UID exists in the 'admins' collection
-    return exists(/databases/$(database)/documents/admins/$(request.auth.uid));
-  }
-}
+    
