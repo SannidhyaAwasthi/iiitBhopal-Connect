@@ -2,22 +2,14 @@
 'use client'; // Required for using usePathname
 
 import type { Metadata } from 'next';
-import { Geist, Geist_Mono } from 'next/font/google';
+import { Inter } from 'next/font/google'; // Use Inter font
 import './globals.css';
 import { FirebaseProvider } from '@/context/firebase-context';
 import { Toaster } from "@/components/ui/toaster";
-import DashboardLayout from '@/components/dashboard'; // Import the DashboardLayout
-import { usePathname } from 'next/navigation'; // Import usePathname
+import Dashboard from '@/components/dashboard'; // Import the Dashboard component
+import { usePathname } from 'next/navigation';
 
-const geistSans = Geist({
-  variable: '--font-geist-sans',
-  subsets: ['latin'],
-});
-
-const geistMono = Geist_Mono({
-  variable: '--font-geist-mono',
-  subsets: ['latin'],
-});
+const inter = Inter({ subsets: ['latin'] }); // Initialize Inter font
 
 // Metadata can still be defined statically if needed, but layout rendering is dynamic
 // export const metadata: Metadata = {
@@ -38,19 +30,19 @@ export default function RootLayout({
   const showDashboard = !noDashboardRoutes.includes(pathname);
 
   return (
-    <html lang="en" className={`${geistSans.variable} ${geistMono.variable}`}>
+    <html lang="en">
       <head>
          {/* Add title here if not using static metadata */}
          <title>IIIT Bhopal Connect</title>
          <meta name="description" content="Connecting students at IIIT Bhopal" />
        </head>
-      <body className={`antialiased`} suppressHydrationWarning={true}>
+      <body className={`${inter.className} antialiased`} suppressHydrationWarning={true}>
         <FirebaseProvider>
            {showDashboard ? (
-             // Wrap children with DashboardLayout for protected routes
-             <DashboardLayout>
-               {children}
-             </DashboardLayout>
+             // Wrap children with Dashboard for protected routes
+             <Dashboard>
+               {children} {/* The actual page content will be rendered here */}
+             </Dashboard>
            ) : (
              // Render children directly for login/signup pages
              children
@@ -61,3 +53,5 @@ export default function RootLayout({
     </html>
   );
 }
+
+    

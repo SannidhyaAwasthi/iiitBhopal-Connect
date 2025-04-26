@@ -11,10 +11,21 @@ import { Button } from '@/components/ui/button';
 import { Home, FileText, Search, Calendar, LogOut, User as UserIconLucide, ListOrdered, ListPlus, Star, CalendarCheck } from 'lucide-react';
 import { signOut } from 'firebase/auth';
 import { auth } from '@/config/firebase';
-import { useRouter, usePathname } from 'next/navigation'; // Import usePathname
+import { useRouter } from 'next/navigation'; // No need for usePathname here
 import { useToast } from '@/hooks/use-toast';
 import LoadingSpinner from '@/components/loading-spinner';
 import type { StudentProfile } from '@/types';
+
+// Import section components directly
+import PostsFeed from './posts-feed';
+import LostAndFoundFeed from './LostAndFoundFeed'; // Corrected import casing
+import { EventsFeed } from './EventsFeed'; // Use named import if it's not default
+import UserProfile from './UserProfile';
+import UserPosts from './user-posts'; // Import UserPosts
+import UserFavorites from './user-favorites'; // Import UserFavorites
+import UserEvents from './user-events'; // Import UserEvents
+import { CreatePostForm } from './CreatePostForm'; // Import CreatePostForm
+import HomePageContent from '../app/home/page'; // Import the HomePage content component
 
 const getGreeting = () => {
   const hour = new Date().getHours();
@@ -32,16 +43,16 @@ const getInitials = (name: string = '') => {
     .toUpperCase();
 };
 
-export default function DashboardLayout({
-  children,
+export default function Dashboard({
+  children, // Keep children prop for potential future use, though not directly used for section switching now
 }: {
   children: React.ReactNode;
 }) {
   const { user } = useAuth();
   const [studentData, setStudentData] = useState<StudentProfile | null>(null);
   const [loadingData, setLoadingData] = useState(true);
+  const [activeSection, setActiveSection] = useState<string>('home'); // Default to 'home'
   const router = useRouter();
-  const pathname = usePathname(); // Get current path
   const { toast } = useToast();
 
   // --- Fetch Student Data ---
@@ -63,15 +74,9 @@ export default function DashboardLayout({
             setStudentData({
                 ...fetchedData,
                 name: fetchedData.name || user.displayName || "Student",
-                scholarNumber: fetchedData.scholarNumber || "N/A",
-                email: fetchedData.email || user.email || "N/A",
-                branch: fetchedData.branch || 'Unknown',
-                yearOfPassing: fetchedData.yearOfPassing || 0,
-                programType: fetchedData.programType || 'Undergraduate',
-                specialRoles: fetchedData.specialRoles || [],
-                phoneNumber: fetchedData.phoneNumber || '',
-                uid: fetchedData.uid || user.uid,
-                gender: fetchedData.gender || 'Unknown',
+                scholarNumber: fetchedData.scholarNumber || "N/A", email: fetchedData.email || user.email || "N/A",
+                branch: fetchedData.branch || 'Unknown', yearOfPassing: fetchedData.yearOfPassing || 0, programType: fetchedData.programType || 'Undergraduate',
+                specialRoles: fetchedData.specialRoles || [], phoneNumber: fetchedData.phoneNumber || '', uid: user.uid, gender: fetchedData.gender || 'Unknown',
             });
         } catch (error: any) {
           console.error("Error fetching student data:", error);
@@ -88,18 +93,20 @@ export default function DashboardLayout({
       } else {
          setStudentData(null);
          setLoadingData(false);
+         // Redirect to login if user becomes null (logged out) while on dashboard
+         router.push('/login');
       }
     };
 
     fetchStudentData();
-  }, [user, toast]);
-
+  }, [user, toast, router]); // Added router dependency
 
   // --- Handle Logout ---
   const handleLogout = async () => {
     try {
       await signOut(auth);
        toast({ title: "Logged Out" });
+      setActiveSection('home'); // Reset section on logout
       router.push('/login');
     } catch (error) {
       console.error('Logout error:', error);
@@ -108,29 +115,47 @@ export default function DashboardLayout({
   };
 
   // --- Navigation Handler ---
-  const handleNavigate = (path: string) => {
-      router.push(path);
+  const handleNavigate = (section: string) => {
+      setActiveSection(section);
+      // Maybe update URL hash for bookmarking? e.g., router.push(`/#${section}`);
   };
 
-  // Determine active section based on pathname
-  const getActiveSection = () => {
-      if (pathname?.startsWith('/home')) return 'home';
-      if (pathname?.startsWith('/profile')) return 'profile';
-      if (pathname?.startsWith('/posts')) return 'posts';
-      if (pathname?.startsWith('/lost-found')) return 'lost-found';
-      if (pathname?.startsWith('/events')) return 'events';
-      if (pathname?.startsWith('/my-posts')) return 'my-posts'; // Note: This route doesn't exist yet, handled within /posts
-      if (pathname?.startsWith('/my-events')) return 'my-events'; // Note: This route doesn't exist yet, handled within /events
-      if (pathname?.startsWith('/my-favorites')) return 'my-favorites'; // Note: This route doesn't exist yet, handled within /posts
-      // Add other sections as needed
-      return 'home'; // Default to home
-  };
-  const activeSection = getActiveSection();
+  // --- Render Content Based on Active Section ---
+   const renderContent = () => {
+     if (loadingData && user) {
+       return <LoadingSpinner />;
+     }
+
+     switch (activeSection) {
+       case 'home':
+         return <HomePageContent />; // Use the imported component
+       case 'profile':
+         return <UserProfile user={user} studentData={studentData} />;
+       case 'posts':
+         return <PostsFeed setActiveSection={setActiveSection} studentData={studentData} />;
+       case 'lost-found':
+         return <LostAndFoundFeed user={user} studentData={studentData} />;
+       case 'events':
+         // Pass setActiveSection if needed by EventsFeed
+         return <EventsFeed user={user} studentData={studentData} setActiveSection={setActiveSection} />;
+       case 'my-posts':
+         return <UserPosts user={user} studentData={studentData} />;
+       case 'my-favorites':
+         return <UserFavorites user={user} studentData={studentData} />;
+       case 'my-events':
+         return <UserEvents user={user} studentData={studentData} />;
+       case 'create-post':
+            return <CreatePostForm />; // Render create post form
+       default:
+         return <HomePageContent />; // Fallback to home
+     }
+   };
 
 
    const greeting = studentData ? `${getGreeting()}, ${studentData.name}` : getGreeting();
    const initials = studentData ? getInitials(studentData.name) : '?';
 
+  // Render the dashboard structure
   return (
     <SidebarProvider>
       <Sidebar>
@@ -149,54 +174,49 @@ export default function DashboardLayout({
             <SidebarMenu>
                  {/* --- Main Navigation --- */}
                  <SidebarMenuItem>
-                      <SidebarMenuButton onClick={() => handleNavigate('/home')} isActive={activeSection === 'home'} tooltip="Home">
+                      <SidebarMenuButton onClick={() => handleNavigate('home')} isActive={activeSection === 'home'} tooltip="Home">
                          <Home /> <span>Home</span>
                       </SidebarMenuButton>
                  </SidebarMenuItem>
                  <SidebarMenuItem>
-                     <SidebarMenuButton onClick={() => handleNavigate('/profile')} isActive={activeSection === 'profile'} tooltip="My Profile">
+                     <SidebarMenuButton onClick={() => handleNavigate('profile')} isActive={activeSection === 'profile'} tooltip="My Profile">
                          <UserIconLucide /> <span>Profile</span>
                      </SidebarMenuButton>
                  </SidebarMenuItem>
                  <SidebarMenuItem>
-                      <SidebarMenuButton onClick={() => handleNavigate('/posts')} isActive={activeSection === 'posts'} tooltip="Posts Feed">
+                      <SidebarMenuButton onClick={() => handleNavigate('posts')} isActive={activeSection === 'posts'} tooltip="Posts Feed">
                          <FileText /> <span>Posts</span>
                       </SidebarMenuButton>
                  </SidebarMenuItem>
                  <SidebarMenuItem>
-                      <SidebarMenuButton onClick={() => handleNavigate('/lost-found')} isActive={activeSection === 'lost-found'} tooltip="Lost & Found">
+                      <SidebarMenuButton onClick={() => handleNavigate('lost-found')} isActive={activeSection === 'lost-found'} tooltip="Lost & Found">
                          <Search /> <span>Lost & Found</span>
                       </SidebarMenuButton>
                    </SidebarMenuItem>
                    <SidebarMenuItem>
-                      <SidebarMenuButton onClick={() => handleNavigate('/events')} isActive={activeSection === 'events'} tooltip="Events">
+                      <SidebarMenuButton onClick={() => handleNavigate('events')} isActive={activeSection === 'events'} tooltip="Events">
                           <Calendar /> <span>Events</span>
                       </SidebarMenuButton>
                    </SidebarMenuItem>
 
-                  {/* --- User Content Submenu --- */}
-                  {/* Keep these, but they might navigate to subsections within main routes or dedicated routes if complex */}
-                  {/* For now, they navigate to the main section */}
+                  {/* --- Your Content Submenu (Triggers section change) --- */}
                   <>
                     <p className="text-xs font-semibold text-sidebar-foreground/60 px-3 pt-4 pb-1">Your Content</p>
                     <SidebarMenuItem>
-                        {/* My Posts might live within /posts with a filter */}
-                        <SidebarMenuButton onClick={() => handleNavigate('/posts?filter=myPosts')} isActive={pathname?.includes('filter=myPosts')} tooltip="My Posts">
+                        <SidebarMenuButton onClick={() => handleNavigate('my-posts')} isActive={activeSection === 'my-posts'} tooltip="My Posts">
                             <ListOrdered /> <span>My Posts</span>
                         </SidebarMenuButton>
                     </SidebarMenuItem>
+                     <SidebarMenuItem>
+                        <SidebarMenuButton onClick={() => handleNavigate('my-favorites')} isActive={activeSection === 'my-favorites'} tooltip="My Favorites">
+                            <Star /> <span>My Favorites</span>
+                        </SidebarMenuButton>
+                    </SidebarMenuItem>
                     <SidebarMenuItem>
-                         {/* My Events might live within /events with a filter */}
-                        <SidebarMenuButton onClick={() => handleNavigate('/events?filter=myEvents')} isActive={pathname?.includes('filter=myEvents')} tooltip="My Events">
+                        <SidebarMenuButton onClick={() => handleNavigate('my-events')} isActive={activeSection === 'my-events'} tooltip="My Events">
                             <CalendarCheck /> <span>My Events</span>
                         </SidebarMenuButton>
                     </SidebarMenuItem>
-                     <SidebarMenuItem>
-                           {/* My Favorites might live within /posts with a filter */}
-                         <SidebarMenuButton onClick={() => handleNavigate('/posts?filter=favorites')} isActive={pathname?.includes('filter=favorites')} tooltip="My Favorites">
-                             <Star /> <span>My Favorites</span>
-                         </SidebarMenuButton>
-                     </SidebarMenuItem>
                   </>
              </SidebarMenu>
         </SidebarContent>
@@ -219,10 +239,12 @@ export default function DashboardLayout({
             </div>
          </header>
         <main className="flex-1 p-4 md:p-6 lg:p-8 overflow-auto">
-           {/* Render the currently active route's content */}
-           {loadingData && user ? <LoadingSpinner /> : children}
+           {/* Render the currently active section's content */}
+           {renderContent()}
         </main>
       </SidebarInset>
     </SidebarProvider>
   );
 }
+
+    
