@@ -20,11 +20,12 @@ import {
 } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
 import { nanoid } from 'nanoid';
-import type { Event, EventRegistration, StudentProfile } from '@/types';
+import type { Event, EventRegistration, StudentProfile, VisibilitySettings } from '@/types'; // Import VisibilitySettings
 import type { User } from 'firebase/auth'; // Import User type
 
 const EVENTS_COLLECTION = 'events';
 const STUDENTS_COLLECTION = 'students';
+const STUDENTS_BY_UID_COLLECTION = 'students-by-uid'; // Added for fetching student profile
 
 // === Helper Function for Image Upload ===
 async function uploadEventPoster(
@@ -57,7 +58,8 @@ async function uploadEventPoster(
 
 // === Event Creation ===
 export async function createEvent(
-    eventData: Omit<Event, 'id' | 'createdAt' | 'numberOfRegistrations' | 'postedBy' | 'postedByName' | 'postedByScholarNumber' | 'likes' | 'dislikes' | 'eventLink' | 'poster'>,
+    // Include visibility in the input data type
+    eventData: Omit<Event, 'id' | 'createdAt' | 'numberOfRegistrations' | 'postedBy' | 'postedByName' | 'postedByScholarNumber' | 'likes' | 'dislikes' | 'eventLink' | 'poster'> & { visibility: VisibilitySettings },
     posterFile: File | null,
     creatorProfile: StudentProfile
 ): Promise<{ eventId: string; eventLink: string }> {
@@ -71,6 +73,7 @@ export async function createEvent(
         posterUrl = await uploadEventPoster(creatorProfile.uid, posterFile, tempEventIdForUpload);
     }
     try {
+        // Ensure visibility is included in the document data
         const docData: Omit<Event, 'id'> = {
             ...eventData,
             location: eventData.location || null,
@@ -85,6 +88,7 @@ export async function createEvent(
             likes: [],
             dislikes: [],
             eventLink: eventLink,
+            visibility: eventData.visibility, // Pass visibility from input
         };
         const docRef = await addDoc(collection(db, EVENTS_COLLECTION), docData);
         // Optional: If using temp ID, could update storage path here, but keeping simple for now.
@@ -101,6 +105,7 @@ export async function createEvent(
 export async function updateEvent(
     eventId: string,
     uploaderUid: string,
+    // Include visibility in the update data type
     eventData: Partial<Omit<Event, 'id' | 'createdAt' | 'postedBy' | 'postedByName' | 'postedByScholarNumber' | 'likes' | 'dislikes' | 'eventLink' | 'numberOfRegistrations'>>,
     newPosterFile: File | null | undefined, // undefined: no change, null: remove, File: replace
     currentPosterUrl: string | null | undefined
@@ -112,11 +117,11 @@ export async function updateEvent(
     let finalPosterUrlForFirestore: string | null | undefined = undefined; // undefined means don't update field
 
     try {
-        // --- Poster Logic --- 
+        // --- Poster Logic ---
         if (newPosterFile === null) { // Explicit request to REMOVE poster
              if (currentPosterUrl) {
                  console.log(`[updateEvent] Removing poster: ${currentPosterUrl}`);
-                 try { await deleteObject(ref(storage, currentPosterUrl)); } 
+                 try { await deleteObject(ref(storage, currentPosterUrl)); }
                  catch (e) { console.error(`Failed deleting old poster during remove: ${currentPosterUrl}`, e); }
             }
             finalPosterUrlForFirestore = null; // Set Firestore field to null
@@ -131,11 +136,11 @@ export async function updateEvent(
              console.log(`[updateEvent] Uploading new poster for ${eventId}`);
              newUploadedUrl = await uploadEventPoster(uploaderUid, newPosterFile, eventId);
              finalPosterUrlForFirestore = newUploadedUrl; // Set Firestore field to new URL
-        } 
+        }
         // else: newPosterFile is undefined, meaning no change requested for poster.
         // finalPosterUrlForFirestore remains undefined.
 
-        // --- Prepare Firestore Update Data --- 
+        // --- Prepare Firestore Update Data ---
         const updateData: { [key: string]: any } = { ...eventData }; // Use any temporarily for easier field manipulation
 
         // Only add poster field if it was changed (removed or replaced)
@@ -150,7 +155,7 @@ export async function updateEvent(
         if (updateData.endTime && !(updateData.endTime instanceof Timestamp)) {
             updateData.endTime = Timestamp.fromDate(new Date(updateData.endTime as any));
         }
-        
+
         // Convert GeoPoint if necessary
          if (updateData.location && !(updateData.location instanceof GeoPoint)) {
              const loc = updateData.location as any;
@@ -171,7 +176,7 @@ export async function updateEvent(
          delete updateData.createdAt;
          delete updateData.eventLink;
 
-        // --- Perform Firestore Update --- 
+        // --- Perform Firestore Update ---
         if (Object.keys(updateData).length > 0) {
              console.log(`[updateEvent] Updating Firestore doc ${eventId} with:`, updateData);
             await updateDoc(eventRef, updateData);
@@ -191,7 +196,7 @@ export async function updateEvent(
          if (error.code === 'permission-denied' || error.message?.includes('permissions')) {
             throw new Error(`Update failed: Permissions.`);
          } else if (error.message?.includes('Invalid image file')) {
-             throw error; 
+             throw error;
          }
         throw new Error(`Failed to update event: ${error.message || 'Unknown error'}`);
     }
@@ -199,17 +204,46 @@ export async function updateEvent(
 
 
 // === Fetching Events ===
-export async function fetchEvents(): Promise<Event[]> {
+// Fetch all events initially, then filter client-side based on user's profile
+export async function fetchEvents(userProfile?: StudentProfile | null): Promise<Event[]> {
     try {
         const q = query(collection(db, EVENTS_COLLECTION), orderBy('createdAt', 'desc'));
         const querySnapshot = await getDocs(q);
-        return querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Event));
+        const allEvents = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Event));
+
+        // Filter based on visibility if user profile is provided
+        if (userProfile) {
+             console.log("[fetchEvents] Filtering events for profile:", userProfile.scholarNumber);
+            return allEvents.filter(event => {
+                const visibility = event.visibility;
+                // If no visibility settings, it's visible to all
+                if (!visibility) return true;
+
+                const isBranchVisible = visibility.branches?.length === 0 || visibility.branches?.includes(userProfile.branch);
+                const isYearVisible = visibility.yearsOfPassing?.length === 0 || visibility.yearsOfPassing?.includes(userProfile.yearOfPassing);
+                const isGenderVisible = visibility.genders?.length === 0 || visibility.genders?.includes(userProfile.gender);
+
+                return isBranchVisible && isYearVisible && isGenderVisible;
+            });
+        } else {
+             // If no profile (e.g., logged out), filter for public events only
+             console.log("[fetchEvents] No profile provided, filtering for public events.");
+            return allEvents.filter(event => {
+                 const visibility = event.visibility;
+                 // Visible if no restrictions are set
+                 return !visibility ||
+                        (visibility.branches?.length === 0 &&
+                         visibility.yearsOfPassing?.length === 0 &&
+                         visibility.genders?.length === 0);
+            });
+        }
     } catch (error) {
         console.error("[fetchEvents] Error: ", error);
         throw new Error(`Could not fetch events: ${(error as Error).message}`);
     }
 }
 
+// Fetch events created BY the user (visibility doesn't apply here)
 export async function fetchUserEvents(userId: string): Promise<Event[]> {
     if (!userId) return [];
     try {
@@ -297,6 +331,7 @@ export async function deleteEvent(eventId: string, posterUrl?: string | null): P
             try { await deleteObject(ref(storage, posterUrl)); }
             catch (imageError: any) { console.error(`Poster delete failed: ${posterUrl}`, imageError); }
         }
+        // TODO: Delete associated registrations, likes, etc. (maybe via Cloud Function)
     } catch (error: any) {
         if (error.code === 'permission-denied') throw new Error("Delete failed: Permissions.");
         throw new Error(`Failed to delete event: ${error.message || 'Unknown error'}`);

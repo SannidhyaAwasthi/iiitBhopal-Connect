@@ -129,6 +129,7 @@ export interface Event {
   likes: string[]; // Array of UIDs
   dislikes: string[]; // Array of UIDs
   eventLink: string; // Unique link/ID for the event
+  visibility: VisibilitySettings; // Added visibility settings
 
   // Client-side added properties (optional)
   userLikeStatus?: 'liked' | 'disliked' | null;
