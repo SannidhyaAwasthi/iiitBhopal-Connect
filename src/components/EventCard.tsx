@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import type { User } from 'firebase/auth';
 import type { Event, StudentProfile } from '@/types';
@@ -125,7 +126,7 @@ export const EventCard: React.FC<EventCardProps> = ({ event, currentUser, curren
     };
 
     const handleShare = () => {
-        const url = `${window.location.origin}/events/${event.eventLink}`;
+        const url = `${window.location.origin}/events/${event.eventLink}`; // Assuming eventLink is unique part of URL
         navigator.clipboard.writeText(url)
             .then(() => {
                 toast({ title: "Link Copied!", description: "Event link copied to clipboard." });
@@ -142,10 +143,12 @@ export const EventCard: React.FC<EventCardProps> = ({ event, currentUser, curren
     const createdAtFormatted = format(event.createdAt.toDate(), 'P');
 
     return (
-        <Card className="flex flex-col h-full shadow-sm hover:shadow-md transition-shadow duration-200">
-            <CardHeader>
+        // Reduced padding and margins for a smaller card appearance
+        <Card className="flex flex-col h-full shadow-sm hover:shadow-md transition-shadow duration-200 p-3">
+            <CardHeader className="p-2">
                 {event.poster && (
-                    <div className="relative w-full h-48 mb-3 rounded-md overflow-hidden border">
+                    // Adjusted poster size
+                    <div className="relative w-full h-32 mb-2 rounded-md overflow-hidden border">
                         <Image
                             src={event.poster}
                             alt={`${event.title} Poster`}
@@ -155,43 +158,45 @@ export const EventCard: React.FC<EventCardProps> = ({ event, currentUser, curren
                          />
                     </div>
                 )}
-                <CardTitle className="text-xl font-semibold">{event.title}</CardTitle>
+                <CardTitle className="text-base font-semibold">{event.title}</CardTitle> {/* Smaller title */}
                 <CardDescription className="text-xs text-muted-foreground">
                     Posted on {createdAtFormatted} by {event.postedByName} ({event.postedByScholarNumber})
                 </CardDescription>
             </CardHeader>
-            <CardContent className="flex-grow space-y-3 text-sm">
-                <div className="flex items-start gap-2">
-                    <Info className="h-4 w-4 mt-0.5 text-muted-foreground flex-shrink-0" />
-                    <p className="whitespace-pre-wrap">{event.description}</p>
+            {/* Reduced content padding */}
+            <CardContent className="flex-grow space-y-2 text-xs p-2">
+                <div className="flex items-start gap-1.5"> {/* Smaller gap */}
+                    <Info className="h-3.5 w-3.5 mt-0.5 text-muted-foreground flex-shrink-0" /> {/* Smaller icon */}
+                    <p className="whitespace-pre-wrap line-clamp-3">{event.description}</p> {/* Clamp description */}
                 </div>
-                <div className="flex items-center gap-2">
-                    <MapPin className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+                <div className="flex items-center gap-1.5">
+                    <MapPin className="h-3.5 w-3.5 text-muted-foreground flex-shrink-0" />
                     <p>Venue: {event.venue}</p>
                 </div>
-                {/* TODO: Add Location Map Display if GeoPoint exists */} 
-                <div className="flex items-center gap-2">
-                    <Clock className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+                <div className="flex items-center gap-1.5">
+                    <Clock className="h-3.5 w-3.5 text-muted-foreground flex-shrink-0" />
                     <p>
                         {startTimeFormatted}
                         {endTimeFormatted ? ` - ${endTimeFormatted}` : ''}
                     </p>
                 </div>
-                 <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                 <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
                     <CalendarPlus className="h-3.5 w-3.5 flex-shrink-0" />
-                    <p>{event.numberOfRegistrations} Registration{event.numberOfRegistrations !== 1 ? 's' : ''}</p>
+                    <p>{event.numberOfRegistrations} Regs</p> {/* Abbreviate */}
                 </div>
             </CardContent>
-            <CardFooter className="border-t pt-4 flex flex-col sm:flex-row justify-between items-stretch sm:items-center gap-2">
-                <div className="flex items-center gap-2">
+            {/* Reduced footer padding */}
+            <CardFooter className="border-t pt-2 flex flex-col sm:flex-row justify-between items-stretch sm:items-center gap-1.5 p-2">
+                <div className="flex items-center gap-1.5"> {/* Smaller gap */}
                      <Button
                         variant={likeStatus === 'liked' ? "secondary" : "ghost"}
-                        size="sm"
+                        size="sm" // Keep size sm for buttons
                         onClick={() => handleLikeDislike(likeStatus === 'liked' ? 'unlike' : 'like')}
                         disabled={isLiking}
                         aria-label="Like"
+                        className="p-1.5" // Smaller padding
                      >
-                         <ThumbsUp className={`h-4 w-4 ${likeStatus === 'liked' ? 'text-primary' : ''}`} />
+                         <ThumbsUp className={`h-3.5 w-3.5 ${likeStatus === 'liked' ? 'text-primary' : ''}`} /> {/* Smaller icon */}
                          <span className="ml-1 text-xs">{likeCount}</span>
                     </Button>
                     <Button
@@ -200,29 +205,32 @@ export const EventCard: React.FC<EventCardProps> = ({ event, currentUser, curren
                         onClick={() => handleLikeDislike(likeStatus === 'disliked' ? 'unlike' : 'dislike')}
                         disabled={isLiking}
                         aria-label="Dislike"
+                         className="p-1.5"
                      >
-                         <ThumbsDown className={`h-4 w-4 ${likeStatus === 'disliked' ? 'text-destructive' : ''}`} />
+                         <ThumbsDown className={`h-3.5 w-3.5 ${likeStatus === 'disliked' ? 'text-destructive' : ''}`} />
                          <span className="ml-1 text-xs">{dislikeCount}</span>
                      </Button>
-                     <Button variant="ghost" size="sm" onClick={handleShare} aria-label="Share">
-                        <Share2 className="h-4 w-4" />
+                     <Button variant="ghost" size="sm" onClick={handleShare} aria-label="Share" className="p-1.5">
+                        <Share2 className="h-3.5 w-3.5" />
                     </Button>
                 </div>
                 <Button
                     size="sm"
                     onClick={handleRegister}
                     disabled={isRegistering || isRegistered}
-                    className="w-full sm:w-auto"
+                    className="w-full sm:w-auto p-1.5" // Smaller padding
                     variant={isRegistered ? "outline" : "default"}
                 >
                      {isRegistering ? (
-                         <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                         <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> // Smaller icon
                      ) : isRegistered ? (
-                         <CheckSquare className="mr-2 h-4 w-4" />
+                         <CheckSquare className="mr-1.5 h-3.5 w-3.5" />
                      ) : (
-                         <CalendarPlus className="mr-2 h-4 w-4" />
+                         <CalendarPlus className="mr-1.5 h-3.5 w-3.5" />
                      )}
-                     {isRegistering ? 'Registering...' : isRegistered ? 'Registered' : 'Register'}
+                     <span className="text-xs"> {/* Smaller text */}
+                        {isRegistering ? 'Registering...' : isRegistered ? 'Registered' : 'Register'}
+                     </span>
                  </Button>
             </CardFooter>
         </Card>

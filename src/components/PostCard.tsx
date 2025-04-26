@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import type { Post } from './posts-feed'; // Adjust import path if necessary
 import { handleVote, handleFavorite } from '@/lib/postActions'; // Import actions
@@ -7,6 +8,7 @@ import { ThumbsUp, ThumbsDown, Star, Loader2, Trash2, Edit } from 'lucide-react'
 import { useToast } from '@/hooks/use-toast'; // Import useToast
 import { Button } from '@/components/ui/button'; // Use Button component for consistency
 import { cn } from '@/lib/utils'; // Import cn for conditional classes
+import Image from 'next/image'; // Import next/image for handling images
 import {
   AlertDialog,
   AlertDialogAction,
@@ -43,13 +45,11 @@ export const PostCard = React.forwardRef<HTMLDivElement, PostCardProps>(({ post,
 
     // Effect to fetch initial vote/favorite status for the current user
      useEffect(() => {
-        // Set initial local state based on props
          setCurrentUpvotes(post.upvotesCount);
          setCurrentDownvotes(post.downvotesCount);
-         setCurrentUserVote(post.userVote || null); // Use the prop value if available
-         setIsFavorited(post.isFavorite || false); // Use the prop value if available
-         // console.log(`[PostCard Effect Init - ${post.id}] Initial state set: Vote=${post.userVote}, Fav=${post.isFavorite}`);
-     }, [post.id, post.upvotesCount, post.downvotesCount, post.userVote, post.isFavorite]); // Depend on all relevant props
+         setCurrentUserVote(post.userVote || null);
+         setIsFavorited(post.isFavorite || false);
+     }, [post.id, post.upvotesCount, post.downvotesCount, post.userVote, post.isFavorite]);
 
 
     const onVote = async (voteType: 'up' | 'down') => {
@@ -65,21 +65,21 @@ export const PostCard = React.forwardRef<HTMLDivElement, PostCardProps>(({ post,
         let optimisticUserVote: 'up' | 'down' | null = currentUserVote;
 
         if (voteType === 'up') {
-            if (currentUserVote === 'up') {
+            if (currentUserVote === 'up') { // Unvoting up
                 optimisticUpvotes = Math.max(0, currentUpvotes - 1);
                 optimisticUserVote = null;
-            } else {
+            } else { // Voting up (either from null or down)
                 optimisticUpvotes = currentUpvotes + 1;
                 if (currentUserVote === 'down') {
                     optimisticDownvotes = Math.max(0, currentDownvotes - 1);
                 }
                 optimisticUserVote = 'up';
             }
-        } else {
-            if (currentUserVote === 'down') {
+        } else { // voteType === 'down'
+            if (currentUserVote === 'down') { // Unvoting down
                 optimisticDownvotes = Math.max(0, currentDownvotes - 1);
                 optimisticUserVote = null;
-            } else {
+            } else { // Voting down (either from null or up)
                 optimisticDownvotes = currentDownvotes + 1;
                 if (currentUserVote === 'up') {
                      optimisticUpvotes = Math.max(0, currentUpvotes - 1);
@@ -116,7 +116,7 @@ export const PostCard = React.forwardRef<HTMLDivElement, PostCardProps>(({ post,
 
         const previousFavoriteStatus = isFavorited;
         const optimisticFavoriteStatus = !isFavorited;
-        setIsFavorited(optimisticFavoriteStatus);
+        setIsFavorited(optimisticFavoriteStatus); // Apply optimistic update
 
         toast({
             title: optimisticFavoriteStatus ? "Post Favorited" : "Post Unfavorited",
@@ -125,20 +125,20 @@ export const PostCard = React.forwardRef<HTMLDivElement, PostCardProps>(({ post,
 
         try {
             const actualNewStatus = await handleFavorite(user.uid, post.id);
+             // If the actual status from the backend is different from the optimistic one, correct it
              if (actualNewStatus !== optimisticFavoriteStatus) {
-                 console.warn("Optimistic favorite status diverged. Correcting state.");
+                 console.warn("[PostCard] Optimistic favorite status diverged. Correcting state.");
                  setIsFavorited(actualNewStatus);
-                 if (actualNewStatus === previousFavoriteStatus) {
-                     toast({
-                         title: actualNewStatus ? "Favorited (Corrected)" : "Unfavorited (Corrected)",
-                         description: "Status updated from server.",
-                     });
-                 }
+                 // Optionally update the toast or show a correction message
+                 toast({
+                     title: actualNewStatus ? "Favorited (Synced)" : "Unfavorited (Synced)",
+                     description: "Status updated from server.",
+                 });
              }
             console.log("[PostCard] Favorite action successful.");
         } catch (err: any) {
             console.error("Favorite action failed:", err);
-            setIsFavorited(previousFavoriteStatus); // Rollback
+            setIsFavorited(previousFavoriteStatus); // Rollback optimistic update
             toast({
                 variant: "destructive",
                 title: "Favorite Failed",
@@ -174,13 +174,12 @@ export const PostCard = React.forwardRef<HTMLDivElement, PostCardProps>(({ post,
     const handleEdit = () => {
         if (!user || !onEdit || isDeleting || isVoting || isFavoriting) return;
         onEdit(post); // Pass the post data to the parent for editing
-        // Parent component (UserPosts) will handle opening the edit modal/form
     };
 
 
     const formattedTimestamp = post.timestamp ? formatDistanceToNow(post.timestamp.toDate(), { addSuffix: true }) : 'Date unknown';
 
-    const baseButtonClass = "flex items-center space-x-1.5 p-1.5 rounded-md transition-colors duration-150 disabled:opacity-50 disabled:cursor-not-allowed";
+    const baseButtonClass = "flex items-center space-x-1.5 p-1 rounded-md transition-colors duration-150 disabled:opacity-50 disabled:cursor-not-allowed"; // Reduced padding
 
     const upvoteButtonClass = cn(
         baseButtonClass,
@@ -195,32 +194,35 @@ export const PostCard = React.forwardRef<HTMLDivElement, PostCardProps>(({ post,
     const favoriteButtonClass = cn(
         baseButtonClass,
         "hover:bg-blue-100 dark:hover:bg-blue-900/50",
+        // Use isFavorited state for styling
         isFavorited ? 'text-accent dark:text-blue-400 font-semibold' : 'text-gray-600 dark:text-gray-400 hover:text-accent dark:hover:text-blue-300'
     );
 
     const isLoading = isVoting || isFavoriting || isDeleting; // Combined loading state
 
     return (
-        <div ref={ref} className="border p-4 rounded-lg shadow mb-4 bg-card text-card-foreground transition-shadow duration-200 hover:shadow-md">
-             <div className="flex justify-between items-start mb-2">
+        // Reduced vertical padding (py-3) and margin-bottom (mb-3)
+        <div ref={ref} className="border p-3 rounded-lg shadow mb-3 bg-card text-card-foreground transition-shadow duration-200 hover:shadow-md flex flex-col h-full">
+             <div className="flex justify-between items-start mb-1">
                  <div>
-                    <h3 className="text-xl font-bold">{post.title}</h3>
+                    {/* Smaller title */}
+                    <h3 className="text-lg font-bold">{post.title}</h3>
                     <p className="text-xs text-muted-foreground">
                          By {post.authorName || 'Unknown Author'} • {formattedTimestamp}
                     </p>
                  </div>
                  {/* --- Edit/Delete Buttons --- */}
                  {showActions && user && user.uid === post.authorId && (
-                     <div className="flex space-x-2">
+                     <div className="flex space-x-1"> {/* Smaller space */}
                          <Button
                              variant="ghost"
                              size="icon"
-                             className="h-8 w-8 text-muted-foreground hover:text-foreground"
+                             className="h-7 w-7 text-muted-foreground hover:text-foreground" // Smaller button
                              onClick={handleEdit}
                              disabled={isLoading}
                              title="Edit Post"
                          >
-                             <Edit className="h-4 w-4" />
+                             <Edit className="h-3.5 w-3.5" /> {/* Smaller icon */}
                              <span className="sr-only">Edit</span>
                          </Button>
                          <AlertDialog>
@@ -228,11 +230,11 @@ export const PostCard = React.forwardRef<HTMLDivElement, PostCardProps>(({ post,
                                  <Button
                                      variant="ghost"
                                      size="icon"
-                                     className="h-8 w-8 text-red-500 hover:bg-red-100 dark:hover:bg-red-900/50"
+                                     className="h-7 w-7 text-red-500 hover:bg-red-100 dark:hover:bg-red-900/50" // Smaller button
                                      disabled={isLoading}
                                      title="Delete Post"
                                  >
-                                    {isDeleting ? <Loader2 className="h-4 w-4 animate-spin"/> : <Trash2 className="h-4 w-4" />}
+                                    {isDeleting ? <Loader2 className="h-3.5 w-3.5 animate-spin"/> : <Trash2 className="h-3.5 w-3.5" />} {/* Smaller icon */}
                                      <span className="sr-only">Delete</span>
                                  </Button>
                             </AlertDialogTrigger>
@@ -264,16 +266,20 @@ export const PostCard = React.forwardRef<HTMLDivElement, PostCardProps>(({ post,
                  )}
              </div>
 
-             <p className="mt-2 mb-4 text-sm leading-relaxed">{post.body}</p>
+             {/* Smaller margins, clamp text */}
+             <p className="mt-1 mb-2 text-sm leading-relaxed line-clamp-3 flex-grow">{post.body}</p>
 
              {post.imageUrls && post.imageUrls.length > 0 && (
-                 <div className="mt-4 mb-4 grid grid-cols-2 sm:grid-cols-3 gap-2">
-                     {post.imageUrls.map((url, index) => (
-                         <a key={index} href={url} target="_blank" rel="noopener noreferrer" className="block">
-                             <img
+                 // Smaller margins, grid setup for images
+                 <div className="mt-2 mb-2 grid grid-cols-3 gap-1">
+                     {post.imageUrls.slice(0, 3).map((url, index) => ( // Limit to 3 previews
+                         <a key={index} href={url} target="_blank" rel="noopener noreferrer" className="block aspect-square">
+                             <Image // Use next/image
                                 src={url}
                                 alt={`Post image ${index + 1}`}
-                                className="w-full h-32 sm:h-40 object-cover rounded-md border border-border cursor-pointer"
+                                width={100} // Provide width/height for layout
+                                height={100}
+                                className="w-full h-full object-cover rounded border border-border cursor-pointer"
                                 loading="lazy"
                              />
                          </a>
@@ -281,8 +287,9 @@ export const PostCard = React.forwardRef<HTMLDivElement, PostCardProps>(({ post,
                  </div>
              )}
 
-            <div className="mt-4 pt-3 border-t border-border flex items-center justify-between">
-                 <div className="flex items-center space-x-4">
+            {/* Reduced top padding */}
+            <div className="mt-auto pt-2 border-t border-border flex items-center justify-between">
+                 <div className="flex items-center space-x-2"> {/* Smaller space */}
                     <button
                         onClick={() => onVote('up')}
                         className={upvoteButtonClass}
@@ -291,8 +298,9 @@ export const PostCard = React.forwardRef<HTMLDivElement, PostCardProps>(({ post,
                         aria-label="Upvote"
                         title="Upvote"
                     >
-                        {isVoting && currentUserVote !== 'down' ? <Loader2 className="h-4 w-4 animate-spin"/> : <ThumbsUp className={`h-5 w-5 ${currentUserVote === 'up' ? 'fill-current' : ''}`} />}
-                        <span className="text-sm tabular-nums">{currentUpvotes}</span>
+                        {/* Use isVoting state */}
+                        {isVoting && currentUserVote !== 'down' ? <Loader2 className="h-4 w-4 animate-spin"/> : <ThumbsUp className={cn("h-4 w-4", currentUserVote === 'up' ? 'fill-current' : '')} />} {/* Smaller icon */}
+                        <span className="text-xs tabular-nums">{currentUpvotes}</span> {/* Smaller text */}
                     </button>
 
                     <button
@@ -303,8 +311,8 @@ export const PostCard = React.forwardRef<HTMLDivElement, PostCardProps>(({ post,
                         aria-label="Downvote"
                         title="Downvote"
                     >
-                         {isVoting && currentUserVote !== 'up' ? <Loader2 className="h-4 w-4 animate-spin"/> : <ThumbsDown className={`h-5 w-5 ${currentUserVote === 'down' ? 'fill-current' : ''}`} />}
-                        <span className="text-sm tabular-nums">{currentDownvotes}</span>
+                        {isVoting && currentUserVote !== 'up' ? <Loader2 className="h-4 w-4 animate-spin"/> : <ThumbsDown className={cn("h-4 w-4", currentUserVote === 'down' ? 'fill-current' : '')} />} {/* Smaller icon */}
+                        <span className="text-xs tabular-nums">{currentDownvotes}</span> {/* Smaller text */}
                     </button>
                  </div>
 
@@ -312,12 +320,13 @@ export const PostCard = React.forwardRef<HTMLDivElement, PostCardProps>(({ post,
                     onClick={onFavorite}
                     className={favoriteButtonClass}
                     disabled={!user || isLoading}
-                    aria-pressed={isFavorited}
+                    aria-pressed={isFavorited} // Use isFavorited state
                     aria-label={isFavorited ? "Unfavorite" : "Favorite"}
                     title={isFavorited ? "Remove from Favorites" : "Add to Favorites"}
                 >
-                     {isFavoriting ? <Loader2 className="h-4 w-4 animate-spin"/> : <Star className={`h-5 w-5 ${isFavorited ? 'fill-current' : ''}`} />}
-                    <span className="text-sm hidden sm:inline">Favorite</span>
+                    {/* Use isFavoriting state */}
+                     {isFavoriting ? <Loader2 className="h-4 w-4 animate-spin"/> : <Star className={cn("h-4 w-4", isFavorited ? 'fill-current' : '')} />} {/* Smaller icon */}
+                    <span className="text-xs hidden sm:inline">Favorite</span> {/* Smaller text */}
                 </button>
             </div>
         </div>
