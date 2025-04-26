@@ -37,32 +37,7 @@ export default function LoginPage() {
     }
   };
 
-   const handleGuestLogin = async () => {
-    setLoading(true);
-    try {
-      await signInWithEmailAndPassword(auth, 'guest@iiitbhopal.ac.in', 'guest@123'); // Use secure guest credentials
-      toast({ title: "Guest Login Successful", description: "Logged in as Guest." });
-      router.push('/');
-    } catch (error: any) {
-      console.error('Guest login error:', error);
-       // Pre-create guest user in Firebase console if needed.
-       if (error.code === 'auth/user-not-found' || error.code === 'auth/wrong-password') {
-         toast({
-            variant: "destructive",
-            title: "Guest Login Failed",
-            description: "Guest account not set up correctly. Please contact admin.",
-         });
-       } else {
-        toast({
-           variant: "destructive",
-           title: "Guest Login Failed",
-           description: error.message || "An unexpected error occurred.",
-        });
-       }
-    } finally {
-      setLoading(false);
-    }
-  };
+  // Removed handleGuestLogin function
 
 
   return (
@@ -100,9 +75,7 @@ export default function LoginPage() {
             <Button type="submit" className="w-full" disabled={loading}>
               {loading ? 'Logging in...' : 'Login'}
             </Button>
-             <Button type="button" variant="outline" className="w-full mt-2" onClick={handleGuestLogin} disabled={loading}>
-              {loading ? 'Logging in...' : 'Login as Guest'}
-            </Button>
+             {/* Removed Login as Guest button */}
           </form>
         </CardContent>
         <CardFooter className="flex justify-center text-sm">

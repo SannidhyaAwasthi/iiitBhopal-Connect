@@ -50,24 +50,9 @@ export function CreatePostForm() {
                  setLoadingProfile(true);
                  setError(null);
                 try {
-                    // Handle guest user explicitly first
-                    if (user.email === 'guest@iiitbhopal.ac.in') {
-                         setStudentProfile({
-                             name: "Guest",
-                             scholarNumber: "guest",
-                             email: "guest@iiitbhopal.ac.in",
-                             branch: 'Unknown',
-                             yearOfPassing: 0,
-                             programType: 'Undergraduate',
-                             specialRoles: [],
-                             phoneNumber: '',
-                             uid: user.uid,
-                             gender: 'Prefer not to say', // Default gender for guest
-                         } as StudentProfile); // Cast as StudentProfile
-                         return; // Exit early for guest
-                    }
+                    // Removed guest user check
 
-                    // Proceed for non-guest users
+                    // Proceed for logged-in users
                     const uidMapRef = doc(db, 'students-by-uid', user.uid);
                     const uidMapSnap = await getDoc(uidMapRef);
                     if (!uidMapSnap.exists()) throw new Error("Student UID mapping not found.");
@@ -147,7 +132,7 @@ export function CreatePostForm() {
         setSuccess(null);
         setError(null);
 
-        if (!user) { // Simplified check, profile check happens later
+        if (!user) { // Simplified check
             setError('You must be logged in to create a post.');
             toast({ variant: "destructive", title: "Not Logged In", description: "Please log in." });
             return;
@@ -278,7 +263,7 @@ export function CreatePostForm() {
          return <div className="p-4"><LoadingSpinner /> Loading profile...</div>;
      }
 
-     if (error && !studentProfile && !user?.email?.includes('guest')) { // Show profile loading error prominently for non-guests
+     if (error && !studentProfile && user) { // Show profile loading error prominently if user exists
           return (
                <div className="p-4">
                    <Alert variant="destructive">
@@ -288,18 +273,6 @@ export function CreatePostForm() {
                </div>
           );
       }
-
-      // Guests should not see the form
-      if (user?.email === 'guest@iiitbhopal.ac.in') {
-           return (
-                <div className="p-4">
-                     <Alert>
-                          <AlertTitle>Guest Access</AlertTitle>
-                          <AlertDescription>Guest users cannot create posts. Please log in with a student account.</AlertDescription>
-                     </Alert>
-                </div>
-           );
-       }
 
        // If profile loaded but user is null (shouldn't happen if profile loaded, but good check)
        if (!user) {
@@ -444,24 +417,3 @@ export function CreatePostForm() {
         </form>
     );
 }
-
-// Kept the basic Loader Icon
-// function Loader2(props: React.SVGProps<SVGSVGElement>) {
-//   return (
-//     <svg
-//       xmlns="http://www.w3.org/2000/svg"
-//       width="24"
-//       height="24"
-//       viewBox="0 0 24 24"
-//       fill="none"
-//       stroke="currentColor"
-//       strokeWidth="2"
-//       strokeLinecap="round"
-//       strokeLinejoin="round"
-//       {...props}
-//     >
-//       <path d="M21 12a9 9 0 1 1-6.219-8.56" />
-//     </svg>
-//   );
-// }
-

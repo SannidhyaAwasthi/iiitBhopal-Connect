@@ -58,25 +58,25 @@ export const EventsFeed: React.FC<EventsFeedProps> = ({ user, studentData }) => 
     }, [toast, user]);
 
     useEffect(() => {
+        // Load events only if the user object is defined (could be null or a user)
         if (user !== undefined) {
-           if (user) {
-               loadEvents();
-           } else {
-               setEvents([]);
-               setLoading(false);
-               setError(null);
-           }
+           loadEvents();
+        } else {
+           // User state is not yet determined (initial load)
+           setLoading(true); // Keep loading until user state is known
         }
     }, [user, loadEvents]);
+
 
     const handleCreateSuccess = (eventLink: string) => {
         loadEvents();
     };
 
-    const canCreate = user && studentData && user.email !== 'guest@iiitbhopal.ac.in';
+    // User can create if logged in and profile data exists
+    const canCreate = user && studentData;
 
     return (
-        <div className="events-feed-container max-w-3xl mx-auto p-4 space-y-6"> {/* Reduced max-width for single column */} 
+        <div className="events-feed-container max-w-3xl mx-auto p-4 space-y-6">
              <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-4 gap-4">
                 <h2 className="text-2xl font-semibold">Upcoming Events</h2>
                 {canCreate ? (
@@ -84,10 +84,11 @@ export const EventsFeed: React.FC<EventsFeedProps> = ({ user, studentData }) => 
                          <PlusCircle className="mr-2 h-4 w-4" /> Create Event
                     </Button>
                  ) : (
+                    // Show alert if user is loaded but cannot create (missing profile or logged out)
                      user !== undefined &&
                     <Alert variant="default" className="w-full sm:w-auto text-sm p-2">
                           <AlertDescription>
-                              {user ? "Guest accounts cannot create events." : "Login with a student account to create events."}
+                              {user ? "Profile loading or unavailable." : "Login to create events."}
                           </AlertDescription>
                      </Alert>
                  )}
@@ -99,17 +100,19 @@ export const EventsFeed: React.FC<EventsFeedProps> = ({ user, studentData }) => 
                 <div className="text-center py-10"><LoadingSpinner /> Loading events...</div>
             )}
 
-            {!user && user !== undefined && !loading && (
+             {/* Show login prompt only when user is known to be null */}
+             {user === null && !loading && (
                  <p className="text-center py-10 text-muted-foreground">Please log in to view events.</p>
              )}
+
 
             {user && !loading && events.length === 0 && !error && (
                 <p className="text-center py-10 text-muted-foreground">No events posted yet.</p>
             )}
 
-            {/* Changed layout: Use flex column or simple block layout */} 
+            {/* Display events only if user is logged in and not loading */}
             {user && !loading && events.length > 0 && (
-                <div className="flex flex-col gap-6"> {/* Removed grid, added flex column and gap */} 
+                <div className="flex flex-col gap-6">
                     {events.map(event => (
                         <EventCard
                             key={event.id}

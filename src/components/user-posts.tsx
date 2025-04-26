@@ -12,8 +12,8 @@ import { EditPostForm } from './EditPostForm'; // Import EditPostForm
 import { getPostsVoteStatus, getFavoritePostIds } from '@/lib/postActions'; // For status fetching
 
 interface UserPostsProps {
-    user: User | null;
-    studentData: StudentProfile | null;
+    user: User | null; // Allow null for consistency, though parent should handle non-logged-in state
+    studentData: StudentProfile | null; // Can be null initially
 }
 
 const UserPosts: FC<UserPostsProps> = ({ user, studentData }) => {
@@ -27,6 +27,7 @@ const UserPosts: FC<UserPostsProps> = ({ user, studentData }) => {
         if (!user) {
             setLoading(false);
             setError("You must be logged in to see your posts.");
+            setUserPosts([]); // Clear posts if user logs out
             return;
         }
 
@@ -75,6 +76,13 @@ const UserPosts: FC<UserPostsProps> = ({ user, studentData }) => {
         } catch (err: any) {
             console.error("Error fetching user posts:", err);
             setError("Failed to load your posts.");
+             // Handle specific Firebase permission errors
+             if (err.code === 'permission-denied') {
+                setError("You don't have permission to view your posts (check Firestore rules).");
+             } else {
+                setError(err.message || "Failed to load your posts.");
+             }
+             setUserPosts([]); // Clear posts on error
         } finally {
             setLoading(false);
         }
@@ -115,6 +123,11 @@ const UserPosts: FC<UserPostsProps> = ({ user, studentData }) => {
 
     if (error) {
         return <p className="text-center py-10 text-red-500 dark:text-red-400">{error}</p>;
+    }
+
+    // This check should ideally be handled by the parent (Dashboard), but added here for safety
+    if (!user) {
+         return <p className="text-center py-10 text-muted-foreground">Please log in to view your posts.</p>;
     }
 
     if (userPosts.length === 0) {

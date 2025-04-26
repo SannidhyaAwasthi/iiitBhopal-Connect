@@ -34,6 +34,7 @@ const LostAndFoundFeed: FC<LostAndFoundFeedProps> = ({ user, studentData }) => {
         setLoadingFound(true);
         setError(null);
         try {
+            // Fetch items regardless of user state, as rules might allow reads
             const [lost, found] = await Promise.all([
                 fetchLostItems(),
                 fetchFoundItems()
@@ -68,7 +69,7 @@ const LostAndFoundFeed: FC<LostAndFoundFeedProps> = ({ user, studentData }) => {
     const isLoading = loadingLost || loadingFound;
 
     // Determine if the user can report items (must be logged in and profile loaded)
-    const canReport = user && studentData && user.email !== 'guest@iiitbhopal.ac.in';
+    const canReport = user && studentData;
 
 
     return (
@@ -85,8 +86,12 @@ const LostAndFoundFeed: FC<LostAndFoundFeedProps> = ({ user, studentData }) => {
                         </Button>
                     </div>
                  ) : (
+                     // Show alert if user is loaded but cannot report (missing profile or logged out)
+                      user !== undefined &&
                      <Alert variant="default" className="w-full sm:w-auto text-sm p-2">
-                          <AlertDescription>Login with a student account to report items.</AlertDescription>
+                          <AlertDescription>
+                              {user ? "Profile loading or unavailable." : "Login to report items."}
+                          </AlertDescription>
                      </Alert>
                  )}
             </div>
@@ -159,4 +164,4 @@ const LostAndFoundFeed: FC<LostAndFoundFeedProps> = ({ user, studentData }) => {
     );
 };
 
-export default LostAndFoundFeed; // Ensure correct casing
+export default LostAndFoundFeed;

@@ -48,7 +48,7 @@ export interface Post {
 
 interface PostsFeedProps {
     setActiveSection: (section: string) => void;
-    isGuest: boolean;
+    // Removed isGuest prop
     studentData: StudentProfile | null; // Pass studentData down
 }
 
@@ -57,13 +57,14 @@ type SortOption = 'recent' | 'popular';
 
 const POSTS_PER_PAGE = 10;
 
-const PostsFeed: FC<PostsFeedProps> = ({ setActiveSection, isGuest, studentData: initialStudentData }) => {
+const PostsFeed: FC<PostsFeedProps> = ({ setActiveSection, studentData: initialStudentData }) => {
     const { user } = useAuth();
     const [isLoadingUser, setIsLoadingUser] = useState(!user); // Initialize based on initial user state
 
     // Use the studentData passed from Dashboard, no need to fetch it again here
     const studentData = initialStudentData;
-    const isLoadingProfile = !initialStudentData && !!user && !isGuest; // Profile is loading if we have a user (not guest) but no data yet
+    // Profile is loading if we have a user but no data yet
+    const isLoadingProfile = !initialStudentData && !!user;
 
     const [posts, setPosts] = useState<Post[]>([]);
     const [isLoadingPosts, setIsLoadingPosts] = useState(false);
@@ -81,7 +82,7 @@ const PostsFeed: FC<PostsFeedProps> = ({ setActiveSection, isGuest, studentData:
       setIsLoadingUser(!user);
     }, [user]);
 
-    // Fetch Posts Logic (largely unchanged, but relies on passed studentData)
+    // Fetch Posts Logic
     const fetchPosts = useCallback(async (loadMore = false) => {
         if (isFetchingRef.current || (loadMore && !hasMore)) {
             console.log("[PostsFeed] Fetch skipped: Already fetching or no more posts.");
@@ -89,20 +90,17 @@ const PostsFeed: FC<PostsFeedProps> = ({ setActiveSection, isGuest, studentData:
          }
        isFetchingRef.current = true;
 
-       // Check if profile data is required and available
-       if (!isGuest && !studentData && user) {
+       // Check if profile data is required and available for a logged-in user
+       if (user && !studentData) {
            console.log("[PostsFeed] Fetch skipped: Profile data needed but not available.");
-           // Don't set error here, Dashboard handles profile loading state/errors
-           // setError("Profile data needed to fetch posts.");
            setIsLoadingPosts(false);
            setIsLoadingMore(false);
            isFetchingRef.current = false;
            setHasMore(false); // No data to fetch if profile is missing
            return;
        }
-
-       console.log(`[PostsFeed] fetchPosts called. User: ${user?.uid ? user.uid : 'None'}, isGuest: ${isGuest}, studentData: ${!!studentData}`);
-
+        // If user is not logged in, proceed, as reads might be allowed by rules
+        console.log(`[PostsFeed] fetchPosts called. User: ${user?.uid ? user.uid : 'None'}, studentData: ${!!studentData}`);
 
         const currentLastVisible = loadMore ? lastVisible : null;
         const shouldSetInitialLoading = !loadMore;
@@ -118,13 +116,10 @@ const PostsFeed: FC<PostsFeedProps> = ({ setActiveSection, isGuest, studentData:
              if (sortOption === 'recent') {
                  q = query(q, orderBy('timestamp', 'desc'));
              } else if (sortOption === 'popular') {
-                 // Assuming 'upvotesCount' exists. Add secondary sort for stable order.
                  q = query(q, orderBy('upvotesCount', 'desc'), orderBy('timestamp', 'desc'));
              }
 
-             // Apply visibility filters server-side if possible and if profile exists
-             // Using the simplified rule for now (read: if request.auth != null), so no server-side filtering needed here.
-             // If rules become more complex, revisit this.
+             // Apply server-side rules (simple read allowed for authenticated users)
 
             const limitWithCheck = POSTS_PER_PAGE + 1;
             q = query(q, limit(limitWithCheck));
@@ -146,26 +141,21 @@ const PostsFeed: FC<PostsFeedProps> = ({ setActiveSection, isGuest, studentData:
             const postsToProcess = hasMoreResults ? fetchedPosts.slice(0, POSTS_PER_PAGE) : fetchedPosts;
             const newLastVisible = hasMoreResults ? querySnapshot.docs[querySnapshot.docs.length - 2] : querySnapshot.docs[querySnapshot.docs.length - 1] ?? null;
 
-            // --- Client-Side Visibility Filtering (Still useful even with simpler read rules if visibility logic is complex) ---
+            // --- Client-Side Visibility Filtering (if needed, based on complex rules or preference) ---
             const profile = studentData;
-            const visiblePosts = postsToProcess.filter(post => {
-                // Guests see all posts based on the simplified read rule
-                if (isGuest) return true;
-                // If profile data is missing for a logged-in user, they see nothing (handled above)
-                if (!profile) return false;
+            const visiblePosts = profile ? postsToProcess.filter(post => {
+                 // Apply visibility filters only if profile exists
+                 const isBranchVisible = post.visibility?.branches?.length === 0 || post.visibility?.branches?.includes(profile.branch);
+                 const isYearVisible = post.visibility?.yearsOfPassing?.length === 0 || post.visibility?.yearsOfPassing?.includes(profile.yearOfPassing);
+                 const isGenderVisible = post.visibility?.genders?.length === 0 || post.visibility?.genders?.includes(profile.gender);
 
-                // Visibility check (can be complex, but let's assume it's needed)
-                const isBranchVisible = post.visibility?.branches?.length === 0 || post.visibility?.branches?.includes(profile.branch);
-                const isYearVisible = post.visibility?.yearsOfPassing?.length === 0 || post.visibility?.yearsOfPassing?.includes(profile.yearOfPassing);
-                const isGenderVisible = post.visibility?.genders?.length === 0 || post.visibility?.genders?.includes(profile.gender);
-
-                console.log(`[PostsFeed] Post ID: ${post.id}, Visible: ${isBranchVisible && isYearVisible && isGenderVisible}`);
-                return isBranchVisible && isYearVisible && isGenderVisible;
-            });
+                 console.log(`[PostsFeed Filter] Post ID: ${post.id}, Visible: ${isBranchVisible && isYearVisible && isGenderVisible}`);
+                 return isBranchVisible && isYearVisible && isGenderVisible;
+             }) : postsToProcess; // If no profile (e.g., logged out, but read allowed), show all fetched
             console.log(`[PostsFeed] ${visiblePosts.length} posts remaining after client-side filtering.`);
 
 
-             // Fetch Vote/Favorite Status for visible posts
+             // Fetch Vote/Favorite Status for visible posts for logged-in user
              const visiblePostIds = visiblePosts.map(post => post.id);
              let voteStatuses: Record<string, 'up' | 'down' | null> = {};
              let favoritePostIds: string[] = [];
@@ -183,14 +173,13 @@ const PostsFeed: FC<PostsFeedProps> = ({ setActiveSection, isGuest, studentData:
 
                  } catch (statusError) {
                      console.error("Error fetching vote/favorite status:", statusError);
-                     // Continue without status
                  }
              }
 
             const postsWithStatus: Post[] = visiblePosts.map(post => ({
                 ...post,
-                userVote: voteStatuses[post.id] || null,
-                isFavorite: favoritePostIds.includes(post.id),
+                userVote: user ? (voteStatuses[post.id] || null) : null, // Only set if user logged in
+                isFavorite: user ? favoritePostIds.includes(post.id) : false, // Only set if user logged in
             }));
 
             console.log("[PostsFeed] Posts with user status:", postsWithStatus);
@@ -198,12 +187,17 @@ const PostsFeed: FC<PostsFeedProps> = ({ setActiveSection, isGuest, studentData:
 
             setPosts(prevPosts => loadMore ? [...prevPosts, ...postsWithStatus] : postsWithStatus);
             setLastVisible(newLastVisible);
-            setHasMore(hasMoreResults && visiblePosts.length > 0); // Also check if filtering left any posts
+            setHasMore(hasMoreResults && visiblePosts.length > 0); // Check if filtering left any posts
 
 
         } catch (err: any) {
             console.error("[PostsFeed] Error fetching posts:", err);
-            setError(err.message || 'Failed to load posts.');
+             // Handle specific Firebase permission errors
+             if (err.code === 'permission-denied' || err.message?.includes('permissions')) {
+                 setError("You don't have permission to view these posts.");
+             } else {
+                 setError(err.message || 'Failed to load posts.');
+             }
              if (!loadMore) setPosts([]);
             setHasMore(false);
         } finally {
@@ -212,13 +206,13 @@ const PostsFeed: FC<PostsFeedProps> = ({ setActiveSection, isGuest, studentData:
             isFetchingRef.current = false;
             console.log("[PostsFeed] Fetch finished.");
         }
-    }, [user, isGuest, studentData, sortOption, hasMore, lastVisible]); // Dependencies adjusted
+    }, [user, studentData, sortOption, hasMore, lastVisible]); // Dependencies updated
 
 
     // Effect to trigger first fetch or refetch on sort/user/profile change
     useEffect(() => {
-        // Fetch only when user/profile status is settled and initial load hasn't run for current state
-        const profileIsReady = isGuest || (user && studentData);
+        // Fetch only when user/profile status is settled and initial load hasn't run
+        const profileIsReady = !user || (user && studentData); // Profile is ready if user is logged out, or if logged in and data exists
         const authIsReady = !isLoadingUser;
 
         if (authIsReady && profileIsReady && !initialLoadDoneRef.current) {
@@ -228,18 +222,18 @@ const PostsFeed: FC<PostsFeedProps> = ({ setActiveSection, isGuest, studentData:
             setHasMore(true);
             setError(null);
             fetchPosts(false); // Initial fetch
-            initialLoadDoneRef.current = true; // Mark initial load as done for this state
+            initialLoadDoneRef.current = true; // Mark initial load as done
         } else {
              console.log(`[PostsFeed Effect] Skipping fetch. AuthReady: ${authIsReady}, ProfileReady: ${profileIsReady}, InitialLoadDone: ${initialLoadDoneRef.current}`);
         }
 
-    // Depend on user, studentData, sortOption, isGuest, isLoadingUser
-    }, [user, studentData, sortOption, isGuest, isLoadingUser, fetchPosts]); // Added fetchPosts back
+    // Depend on user, studentData, sortOption, isLoadingUser
+    }, [user, studentData, sortOption, isLoadingUser, fetchPosts]);
 
      // Reset initialLoadDoneRef when dependencies that trigger a full refetch change
      useEffect(() => {
        initialLoadDoneRef.current = false;
-     }, [user, studentData, sortOption, isGuest]);
+     }, [user, studentData, sortOption]);
 
 
     // Infinite Scroll Logic
@@ -255,7 +249,7 @@ const PostsFeed: FC<PostsFeedProps> = ({ setActiveSection, isGuest, studentData:
         }, { rootMargin: '200px', threshold: 0 });
 
         if (node) observer.current.observe(node);
-    }, [isLoadingPosts, isLoadingMore, hasMore, fetchPosts]); // Added fetchPosts
+    }, [isLoadingPosts, isLoadingMore, hasMore, fetchPosts]);
 
     // Cleanup observer
     useEffect(() => {
@@ -272,75 +266,78 @@ const PostsFeed: FC<PostsFeedProps> = ({ setActiveSection, isGuest, studentData:
     if (isLoadingUser) {
         return <div className="text-center py-10"><LoadingSpinner /> Loading user...</div>;
     }
-    // Removed !user check here, Dashboard handles redirecting logged-out users
 
-    // If profile is still loading for a non-guest user
-     if (!isGuest && user && isLoadingProfile) {
+    // If profile is still loading for a logged-in user
+     if (user && isLoadingProfile) {
         return <div className="text-center py-10"><LoadingSpinner /> Loading profile...</div>;
     }
-    // If profile loading failed for a non-guest user
-     if (!isGuest && user && !studentData && !isLoadingProfile) {
+    // If profile loading failed for a logged-in user (and profile is required for any posts)
+     if (user && !studentData && !isLoadingProfile && error?.includes("permission")) {
+        // Handle case where profile fetch fails due to permissions or other issues,
+        // and profile data *is* required to view posts.
          return <p className="text-center py-10 text-red-500 dark:text-red-400">Error loading profile data. Cannot display posts.</p>;
      }
 
 
     return (
         <div className="posts-feed-container max-w-3xl mx-auto p-4 space-y-6">
-             {/* Action Buttons */}
-            <div className="flex justify-between items-center mb-4 gap-4">
-                <div className="flex gap-2 flex-wrap"> {/* Added flex-wrap for smaller screens */}
-                     <Button
-                         onClick={() => setActiveSection('create-post')}
-                         disabled={isGuest || isLoadingProfile} // Disable if guest or profile is loading
-                         variant="default"
-                         size="sm"
-                     >
-                         <PlusCircle className="mr-2 h-4 w-4" />
-                         Create Post
-                     </Button>
-                     <Button
-                         onClick={() => setActiveSection('your-posts')}
-                         disabled={isGuest || isLoadingProfile} // Disable if guest or profile is loading
-                         variant="outline"
-                         size="sm"
-                     >
-                          <UserIcon className="mr-2 h-4 w-4" />
-                          Your Posts
-                      </Button>
-                      <Button
-                         onClick={() => setActiveSection('your-favorites')} // Navigate to favorites section
-                         disabled={isGuest || isLoadingProfile} // Disable if guest or profile is loading
-                         variant="outline"
-                         size="sm"
-                     >
-                          <Star className="mr-2 h-4 w-4" /> {/* Favorite Icon */}
-                          Favorites
-                      </Button>
+             {/* Action Buttons - Show only if user is logged in */}
+             {user && (
+                 <div className="flex justify-between items-center mb-4 gap-4">
+                     <div className="flex gap-2 flex-wrap">
+                          <Button
+                              onClick={() => setActiveSection('create-post')}
+                              disabled={isLoadingProfile || !studentData} // Disable if profile is loading or unavailable
+                              variant="default"
+                              size="sm"
+                          >
+                              <PlusCircle className="mr-2 h-4 w-4" />
+                              Create Post
+                          </Button>
+                          <Button
+                              onClick={() => setActiveSection('my-posts')}
+                              disabled={isLoadingProfile || !studentData}
+                              variant="outline"
+                              size="sm"
+                          >
+                               <UserIcon className="mr-2 h-4 w-4" />
+                               Your Posts
+                           </Button>
+                           <Button
+                              onClick={() => setActiveSection('my-favorites')}
+                              disabled={isLoadingProfile || !studentData}
+                              variant="outline"
+                              size="sm"
+                          >
+                               <Star className="mr-2 h-4 w-4" />
+                               Favorites
+                           </Button>
+                      </div>
+
+                     {/* Sort Options */}
+                     <div className="flex items-center ml-auto">
+                        <label htmlFor="sort-select" className="mr-2 text-gray-700 dark:text-gray-300 text-sm font-medium hidden sm:inline">Sort By:</label>
+                        <select
+                            id="sort-select"
+                            value={sortOption}
+                            onChange={(e) => {
+                                setSortOption(e.target.value as SortOption);
+                                initialLoadDoneRef.current = false; // Trigger refetch
+                            }}
+                            className="border border-input bg-background rounded-md shadow-sm p-1.5 text-sm focus:ring-ring focus:ring-offset-2 focus:outline-none focus:ring-2 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100"
+                            disabled={isLoadingPosts || isLoadingMore}
+                        >
+                            <option value="recent">Most Recent</option>
+                            <option value="popular">Most Popular</option>
+                        </select>
+                     </div>
                  </div>
+             )}
 
-                 {/* Sort Options */}
-                 <div className="flex items-center ml-auto"> {/* Ensure sort is pushed right */}
-                    <label htmlFor="sort-select" className="mr-2 text-gray-700 dark:text-gray-300 text-sm font-medium hidden sm:inline">Sort By:</label> {/* Hide label on small screens */}
-                    <select
-                        id="sort-select"
-                        value={sortOption}
-                        onChange={(e) => {
-                            setSortOption(e.target.value as SortOption);
-                            initialLoadDoneRef.current = false; // Trigger refetch on sort change
-                        }}
-                        className="border border-input bg-background rounded-md shadow-sm p-1.5 text-sm focus:ring-ring focus:ring-offset-2 focus:outline-none focus:ring-2 dark:border-gray-700 dark:bg-gray-900 dark:text-gray-100"
-                        disabled={isLoadingPosts || isLoadingMore}
-                    >
-                        <option value="recent">Most Recent</option>
-                        <option value="popular">Most Popular</option>
-                    </select>
-                 </div>
-            </div>
-
-
+            {/* Show loading spinner only when actively loading initial posts */}
             {isLoadingPosts && posts.length === 0 && <div className="text-center py-10"><LoadingSpinner /> Loading posts...</div>}
 
-            {/* Display error message if posts fetch failed */}
+             {/* Display error message if posts fetch failed */}
              {error && posts.length === 0 && <p className="text-center py-10 text-red-500 dark:text-red-400">Error loading posts: {error}</p>}
 
             <div className="posts-list space-y-4">
@@ -358,7 +355,12 @@ const PostsFeed: FC<PostsFeedProps> = ({ setActiveSection, isGuest, studentData:
 
             {isLoadingMore && <div className="text-center py-5"><LoadingSpinner /> Loading more...</div>}
             {!isLoadingPosts && !hasMore && posts.length > 0 && <p className="text-center py-5 text-muted-foreground">You've reached the end!</p>}
-            {!isLoadingPosts && !isLoadingMore && posts.length === 0 && !error && <p className="text-center py-10 text-muted-foreground">No posts found. Be the first to create one!</p>}
+            {/* Adjust empty state message based on whether user is logged in */}
+            {!isLoadingPosts && !isLoadingMore && posts.length === 0 && !error && (
+                <p className="text-center py-10 text-muted-foreground">
+                    {user ? "No posts found matching your criteria. Be the first to create one!" : "No posts found. Log in to see more."}
+                </p>
+            )}
         </div>
     );
 };
