@@ -1,8 +1,10 @@
-import type {Metadata} from 'next';
+
+import type { Metadata } from 'next';
 import { Geist, Geist_Mono } from 'next/font/google';
 import './globals.css';
 import { FirebaseProvider } from '@/context/firebase-context';
-import { Toaster } from "@/components/ui/toaster"
+import { Toaster } from "@/components/ui/toaster";
+import DashboardLayout from '@/components/dashboard'; // Import the DashboardLayout
 
 const geistSans = Geist({
   variable: '--font-geist-sans',
@@ -26,10 +28,12 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" className={`${geistSans.variable} ${geistMono.variable}`}>
-      {/* Add suppressHydrationWarning to the body tag */}
       <body className={`antialiased`} suppressHydrationWarning={true}>
         <FirebaseProvider>
-          {children}
+          {/* Wrap the children with DashboardLayout */}
+          <DashboardLayout>
+              {children}
+          </DashboardLayout>
           <Toaster />
         </FirebaseProvider>
       </body>

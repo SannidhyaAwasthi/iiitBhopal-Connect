@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useState, useEffect } from 'react';
@@ -10,18 +11,10 @@ import { Button } from '@/components/ui/button';
 import { Home, FileText, Search, Calendar, LogOut, User as UserIconLucide, ListOrdered, ListPlus, Star, CalendarCheck } from 'lucide-react';
 import { signOut } from 'firebase/auth';
 import { auth } from '@/config/firebase';
-import { useRouter } from 'next/navigation';
+import { useRouter, usePathname } from 'next/navigation'; // Import usePathname
 import { useToast } from '@/hooks/use-toast';
-import PostsFeed from './posts-feed';
-import LostAndFoundFeed from './LostAndFoundFeed';
-import { EventsFeed } from './EventsFeed';
-import UserPosts from './user-posts';
-import UserEvents from './user-events';
-import UserFavorites from './user-favorites';
-import UserProfile from './UserProfile';
 import LoadingSpinner from '@/components/loading-spinner';
 import type { StudentProfile } from '@/types';
-import { CreatePostForm } from './CreatePostForm';
 
 const getGreeting = () => {
   const hour = new Date().getHours();
@@ -31,7 +24,7 @@ const getGreeting = () => {
 };
 
 const getInitials = (name: string = '') => {
-  if (!name) return '?'; // Return ? if no name
+  if (!name) return '?';
   return name
     .split(' ')
     .map((n) => n[0])
@@ -39,13 +32,16 @@ const getInitials = (name: string = '') => {
     .toUpperCase();
 };
 
-
-export default function Dashboard() {
+export default function DashboardLayout({
+  children,
+}: {
+  children: React.ReactNode;
+}) {
   const { user } = useAuth();
   const [studentData, setStudentData] = useState<StudentProfile | null>(null);
-  const [activeSection, setActiveSection] = useState('home');
   const [loadingData, setLoadingData] = useState(true);
   const router = useRouter();
+  const pathname = usePathname(); // Get current path
   const { toast } = useToast();
 
   // --- Fetch Student Data ---
@@ -54,8 +50,6 @@ export default function Dashboard() {
       if (user) {
         setLoadingData(true);
         try {
-          // REMOVED Guest user check - assume all users are students
-
           const uidMapRef = doc(db, 'students-by-uid', user.uid);
           const uidMapSnap = await getDoc(uidMapRef);
           if (!uidMapSnap.exists()) throw new Error("Student UID mapping not found.");
@@ -66,23 +60,21 @@ export default function Dashboard() {
           if (!studentDocSnap.exists()) throw new Error(`Student profile not found: ${scholarNumber}`);
 
            const fetchedData = studentDocSnap.data() as Omit<StudentProfile, 'gender'> & { gender?: StudentProfile['gender'] };
-           setStudentData({
-               ...fetchedData,
-               name: fetchedData.name || user.displayName || "Student",
-               scholarNumber: fetchedData.scholarNumber || "N/A",
-               email: fetchedData.email || user.email || "N/A",
-               branch: fetchedData.branch || 'Unknown',
-               yearOfPassing: fetchedData.yearOfPassing || 0,
-               programType: fetchedData.programType || 'Undergraduate',
-               specialRoles: fetchedData.specialRoles || [],
-               phoneNumber: fetchedData.phoneNumber || '',
-               uid: fetchedData.uid || user.uid,
-               gender: fetchedData.gender || 'Unknown',
-           });
-
+            setStudentData({
+                ...fetchedData,
+                name: fetchedData.name || user.displayName || "Student",
+                scholarNumber: fetchedData.scholarNumber || "N/A",
+                email: fetchedData.email || user.email || "N/A",
+                branch: fetchedData.branch || 'Unknown',
+                yearOfPassing: fetchedData.yearOfPassing || 0,
+                programType: fetchedData.programType || 'Undergraduate',
+                specialRoles: fetchedData.specialRoles || [],
+                phoneNumber: fetchedData.phoneNumber || '',
+                uid: fetchedData.uid || user.uid,
+                gender: fetchedData.gender || 'Unknown',
+            });
         } catch (error: any) {
           console.error("Error fetching student data:", error);
-            // Set fallback data on error 
             setStudentData({
                 name: user.displayName || "Student",
                 scholarNumber: "N/A", email: user.email || "N/A",
@@ -115,51 +107,29 @@ export default function Dashboard() {
     }
   };
 
-  // REMOVED isGuest variable
-
-  // --- Render Content based on Active Section ---
-  const renderContent = () => {
-     if (loadingData && !studentData) return <LoadingSpinner />;
-     if (!user) {
-        router.push('/login');
-        return <LoadingSpinner />;
-     }
-     if (!studentData) { // Added check if student data load failed critically
-         return <div className="p-4 text-center text-red-500">Failed to load profile data. Please try refreshing.</div>;
-     }
-
-    switch (activeSection) {
-       case 'home':
-         return <div className="text-center py-10 text-xl font-semibold">Homepage Placeholder</div>;
-       case 'profile':
-         return <UserProfile studentData={studentData} user={user}/>;
-       case 'posts':
-         // Removed isGuest prop 
-         return <PostsFeed setActiveSection={setActiveSection} studentData={studentData} />;
-       case 'create-post':
-         // Removed isGuest check
-         return <CreatePostForm />;
-       case 'lost-found':
-         return <LostAndFoundFeed user={user} studentData={studentData} />;
-       case 'events':
-          // Pass setActiveSection here
-          return <EventsFeed user={user} studentData={studentData} setActiveSection={setActiveSection} />;
-       case 'my-posts':
-         // Removed isGuest check
-         return <UserPosts user={user} studentData={studentData} />;
-       case 'my-events':
-         // Removed isGuest check
-          return <UserEvents user={user} studentData={studentData} />;
-       case 'my-favorites':
-         // Removed isGuest check
-          return <UserFavorites user={user} studentData={studentData} />;
-       default:
-          return <div className="text-center py-10 text-xl font-semibold">Homepage Placeholder</div>;
-    }
+  // --- Navigation Handler ---
+  const handleNavigate = (path: string) => {
+      router.push(path);
   };
 
+  // Determine active section based on pathname
+  const getActiveSection = () => {
+      if (pathname?.startsWith('/home')) return 'home';
+      if (pathname?.startsWith('/profile')) return 'profile';
+      if (pathname?.startsWith('/posts')) return 'posts';
+      if (pathname?.startsWith('/lost-found')) return 'lost-found';
+      if (pathname?.startsWith('/events')) return 'events';
+      if (pathname?.startsWith('/my-posts')) return 'my-posts'; // Note: This route doesn't exist yet, handled within /posts
+      if (pathname?.startsWith('/my-events')) return 'my-events'; // Note: This route doesn't exist yet, handled within /events
+      if (pathname?.startsWith('/my-favorites')) return 'my-favorites'; // Note: This route doesn't exist yet, handled within /posts
+      // Add other sections as needed
+      return 'home'; // Default to home
+  };
+  const activeSection = getActiveSection();
+
+
    const greeting = studentData ? `${getGreeting()}, ${studentData.name}` : getGreeting();
-   const initials = studentData ? getInitials(studentData.name) : '?'; // Use ? if data fails
+   const initials = studentData ? getInitials(studentData.name) : '?';
 
   return (
     <SidebarProvider>
@@ -179,50 +149,54 @@ export default function Dashboard() {
             <SidebarMenu>
                  {/* --- Main Navigation --- */}
                  <SidebarMenuItem>
-                      <SidebarMenuButton onClick={() => setActiveSection('home')} isActive={activeSection === 'home'} tooltip="Home">
+                      <SidebarMenuButton onClick={() => handleNavigate('/home')} isActive={activeSection === 'home'} tooltip="Home">
                          <Home /> <span>Home</span>
                       </SidebarMenuButton>
                  </SidebarMenuItem>
                  <SidebarMenuItem>
-                     <SidebarMenuButton onClick={() => setActiveSection('profile')} isActive={activeSection === 'profile'} tooltip="My Profile">
+                     <SidebarMenuButton onClick={() => handleNavigate('/profile')} isActive={activeSection === 'profile'} tooltip="My Profile">
                          <UserIconLucide /> <span>Profile</span>
                      </SidebarMenuButton>
                  </SidebarMenuItem>
                  <SidebarMenuItem>
-                      <SidebarMenuButton onClick={() => setActiveSection('posts')} isActive={activeSection === 'posts'} tooltip="Posts Feed">
+                      <SidebarMenuButton onClick={() => handleNavigate('/posts')} isActive={activeSection === 'posts'} tooltip="Posts Feed">
                          <FileText /> <span>Posts</span>
                       </SidebarMenuButton>
                  </SidebarMenuItem>
                  <SidebarMenuItem>
-                      <SidebarMenuButton onClick={() => setActiveSection('lost-found')} isActive={activeSection === 'lost-found'} tooltip="Lost & Found">
+                      <SidebarMenuButton onClick={() => handleNavigate('/lost-found')} isActive={activeSection === 'lost-found'} tooltip="Lost & Found">
                          <Search /> <span>Lost & Found</span>
                       </SidebarMenuButton>
                    </SidebarMenuItem>
                    <SidebarMenuItem>
-                      <SidebarMenuButton onClick={() => setActiveSection('events')} isActive={activeSection === 'events'} tooltip="Events">
+                      <SidebarMenuButton onClick={() => handleNavigate('/events')} isActive={activeSection === 'events'} tooltip="Events">
                           <Calendar /> <span>Events</span>
                       </SidebarMenuButton>
                    </SidebarMenuItem>
 
-                  {/* --- User Content Submenu --- */} 
-                  {/* Removed isGuest check */} 
+                  {/* --- User Content Submenu --- */}
+                  {/* Keep these, but they might navigate to subsections within main routes or dedicated routes if complex */}
+                  {/* For now, they navigate to the main section */}
                   <>
                     <p className="text-xs font-semibold text-sidebar-foreground/60 px-3 pt-4 pb-1">Your Content</p>
                     <SidebarMenuItem>
-                        <SidebarMenuButton onClick={() => setActiveSection('my-posts')} isActive={activeSection === 'my-posts'} tooltip="My Posts">
+                        {/* My Posts might live within /posts with a filter */}
+                        <SidebarMenuButton onClick={() => handleNavigate('/posts?filter=myPosts')} isActive={pathname?.includes('filter=myPosts')} tooltip="My Posts">
                             <ListOrdered /> <span>My Posts</span>
                         </SidebarMenuButton>
                     </SidebarMenuItem>
                     <SidebarMenuItem>
-                        <SidebarMenuButton onClick={() => setActiveSection('my-events')} isActive={activeSection === 'my-events'} tooltip="My Events">
+                         {/* My Events might live within /events with a filter */}
+                        <SidebarMenuButton onClick={() => handleNavigate('/events?filter=myEvents')} isActive={pathname?.includes('filter=myEvents')} tooltip="My Events">
                             <CalendarCheck /> <span>My Events</span>
                         </SidebarMenuButton>
                     </SidebarMenuItem>
-                    <SidebarMenuItem>
-                        <SidebarMenuButton onClick={() => setActiveSection('my-favorites')} isActive={activeSection === 'my-favorites'} tooltip="My Favorites">
-                            <Star /> <span>My Favorites</span>
-                        </SidebarMenuButton>
-                    </SidebarMenuItem>
+                     <SidebarMenuItem>
+                           {/* My Favorites might live within /posts with a filter */}
+                         <SidebarMenuButton onClick={() => handleNavigate('/posts?filter=favorites')} isActive={pathname?.includes('filter=favorites')} tooltip="My Favorites">
+                             <Star /> <span>My Favorites</span>
+                         </SidebarMenuButton>
+                     </SidebarMenuItem>
                   </>
              </SidebarMenu>
         </SidebarContent>
@@ -245,7 +219,8 @@ export default function Dashboard() {
             </div>
          </header>
         <main className="flex-1 p-4 md:p-6 lg:p-8 overflow-auto">
-           {renderContent()}
+           {/* Render the currently active route's content */}
+           {loadingData && user ? <LoadingSpinner /> : children}
         </main>
       </SidebarInset>
     </SidebarProvider>

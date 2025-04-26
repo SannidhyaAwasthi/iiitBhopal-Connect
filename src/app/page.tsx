@@ -1,9 +1,10 @@
+
 'use client';
 
 import { useAuth } from '@/hooks/use-auth';
 import { useRouter } from 'next/navigation';
 import { useEffect } from 'react';
-import Dashboard from '@/components/dashboard';
+// Remove Dashboard import as it's now handled by layout
 import LoadingSpinner from '@/components/loading-spinner';
 
 export default function Home() {
@@ -11,19 +12,26 @@ export default function Home() {
   const router = useRouter();
 
   useEffect(() => {
-    if (!loading && !user) {
-      router.push('/login');
+    if (!loading) {
+      if (user) {
+        router.push('/home'); // Redirect logged-in users to the new homepage
+      } else {
+        router.push('/login');
+      }
     }
   }, [user, loading, router]);
 
-  if (loading) {
-    return <LoadingSpinner />;
-  }
+  // Show loading spinner while checking auth state and redirecting
+  return <LoadingSpinner />;
 
-  if (!user) {
-    // Redirecting handled by useEffect, show loading or null while redirecting
-    return <LoadingSpinner />;
-  }
-
-  return <Dashboard />;
+  // // Original logic (keeping for reference, but replaced by redirect)
+  // if (loading) {
+  //   return <LoadingSpinner />;
+  // }
+  // if (!user) {
+  //   // Redirecting handled by useEffect, show loading or null while redirecting
+  //   return <LoadingSpinner />;
+  // }
+  // // Dashboard is rendered by the layout, this page just triggers the redirect
+  // return null;
 }
