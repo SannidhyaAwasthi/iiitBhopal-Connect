@@ -8,9 +8,9 @@ service firebase.storage {
     }
 
     // Function to check admin status by attempting to read the admin document
-    function isAdmin() {
-      return isAuthenticated() && exists(/databases/$(database)/documents/admins/$(request.auth.uid));
-    }
+    // Note: Storage rules cannot directly read Firestore. Admin checks must rely on
+    // claims or client-side logic combined with Firestore rules for the *action*.
+    // function isAdmin() { ... } // Cannot implement directly here
 
     // --- Lost and Found Image Rules ---
     match /lostAndFound/{userId}/{fileName} {
@@ -42,22 +42,23 @@ service firebase.storage {
       // UPDATE: Disallowed, handled by delete + create.
       allow update: if false;
 
-      // DELETE: Allow event creator or admin to delete.
-      allow delete: if isAuthenticated()
-                    && (
-                      // Fetch the event document from Firestore to check ownership
-                      // Note: `get()` in storage rules is different from Firestore rules' `get()`
-                      // It fetches the resource metadata, not a Firestore doc directly.
-                      // We need to rely on the client ensuring the correct user calls delete,
-                      // and Firestore rules prevent unauthorized *document* deletion.
-                      // For strictness, deletion is best handled by a Cloud Function checking Firestore ownership.
-                      // This rule allows any authenticated user to *attempt* delete,
-                      // but the `updateEvent` function should verify ownership before calling deleteObject.
-                      // A simpler, more common approach:
-                       request.auth != null // Just ensure the user is logged in. Actual permission checked client-side/Firestore.
-                      // Or, if you *must* check ownership here (less common, might require metadata):
-                      // resource.metadata.ownerUid == request.auth.uid // Requires setting custom metadata on upload
-                    );
+      // DELETE: Allow authenticated users to attempt deletion.
+      // Firestore rules should verify ownership before allowing the document update that removes the URL.
+      // Client-side code in `updateEvent` or a Cloud Function should verify ownership before calling `deleteObject`.
+      allow delete: if isAuthenticated();
+    }
+
+    // --- Resume Rules ---
+    match /resumes/{userId}/resume.pdf {
+      // Allow reading only by the owner
+      allow read: if isAuthenticated() && request.auth.uid == userId;
+      // Allow create/update (write) only by the owner, check size and type
+      allow write: if isAuthenticated()
+                  && request.auth.uid == userId
+                  && request.resource.size < 10 * 1024 * 1024 // 10MB limit
+                  && request.resource.contentType == 'application/pdf';
+      // Allow delete only by the owner
+      allow delete: if isAuthenticated() && request.auth.uid == userId;
     }
 
      // Default deny all other paths
@@ -66,5 +67,3 @@ service firebase.storage {
      }
   }
 }
-
-    
