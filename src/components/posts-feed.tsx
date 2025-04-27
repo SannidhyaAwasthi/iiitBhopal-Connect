@@ -275,7 +275,7 @@ const PostsFeed: FC<PostsFeedProps> = ({ setActiveSection, studentData: initialS
      if (user && !studentData && !isLoadingProfile && error?.includes("permission")) {
         // Handle case where profile fetch fails due to permissions or other issues,
         // and profile data *is* required to view posts.
-         return <p className="text-center py-10 text-red-500 dark:text-red-400">Error loading profile data. Cannot display posts.</p>;
+         return <p className="text-center py-10 text-red-500 dark:text-red-400">Error loading profile data. Cannot display notices.</p>;
      }
 
 
@@ -292,7 +292,7 @@ const PostsFeed: FC<PostsFeedProps> = ({ setActiveSection, studentData: initialS
                               size="sm"
                           >
                               <PlusCircle className="mr-2 h-4 w-4" />
-                              Create Post
+                              Create Notice
                           </Button>
                           <Button
                               onClick={() => setActiveSection('my-posts')}
@@ -301,7 +301,7 @@ const PostsFeed: FC<PostsFeedProps> = ({ setActiveSection, studentData: initialS
                               size="sm"
                           >
                                <UserIcon className="mr-2 h-4 w-4" />
-                               My Posts
+                               My Notices
                            </Button>
                            <Button
                               onClick={() => setActiveSection('my-favorites')}
@@ -310,7 +310,7 @@ const PostsFeed: FC<PostsFeedProps> = ({ setActiveSection, studentData: initialS
                               size="sm"
                           >
                                <Star className="mr-2 h-4 w-4" />
-                               Favorites
+                               Pinned
                            </Button>
                       </div>
 
@@ -335,10 +335,10 @@ const PostsFeed: FC<PostsFeedProps> = ({ setActiveSection, studentData: initialS
              )}
 
             {/* Show loading spinner only when actively loading initial posts */}
-            {isLoadingPosts && posts.length === 0 && <div className="text-center py-10"><LoadingSpinner /> Loading posts...</div>}
+            {isLoadingPosts && posts.length === 0 && <div className="text-center py-10"><LoadingSpinner /> Loading notices...</div>}
 
              {/* Display error message if posts fetch failed */}
-             {error && posts.length === 0 && <p className="text-center py-10 text-red-500 dark:text-red-400">Error loading posts: {error}</p>}
+             {error && posts.length === 0 && <p className="text-center py-10 text-red-500 dark:text-red-400">Error loading notices: {error}</p>}
 
             <div className="posts-list space-y-4">
                 {posts.map((post, index) => {
@@ -358,7 +358,7 @@ const PostsFeed: FC<PostsFeedProps> = ({ setActiveSection, studentData: initialS
             {/* Adjust empty state message based on whether user is logged in */}
             {!isLoadingPosts && !isLoadingMore && posts.length === 0 && !error && (
                 <p className="text-center py-10 text-muted-foreground">
-                    {user ? "No posts found matching your criteria. Be the first to create one!" : "No posts found. Log in to see more."}
+                    {user ? "No notices found matching your criteria. Be the first to create one!" : "No notices found. Log in to see more."}
                 </p>
             )}
         </div>

@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import type { Post } from './posts-feed'; // Adjust import path if necessary
 import { handleVote, handleFavorite } from '@/lib/postActions'; // Import actions
@@ -119,8 +118,8 @@ export const PostCard = React.forwardRef<HTMLDivElement, PostCardProps>(({ post,
         setIsFavorited(optimisticFavoriteStatus); // Apply optimistic update
 
         toast({
-            title: optimisticFavoriteStatus ? "Post Favorited" : "Post Unfavorited",
-            description: optimisticFavoriteStatus ? "Added to your favorites." : "Removed from your favorites.",
+            title: optimisticFavoriteStatus ? "Notice Pinned" : "Notice Unpinned",
+            description: optimisticFavoriteStatus ? "Pin" : "Removed from pinned",
         });
 
         try {
@@ -131,7 +130,7 @@ export const PostCard = React.forwardRef<HTMLDivElement, PostCardProps>(({ post,
                  setIsFavorited(actualNewStatus);
                  // Optionally update the toast or show a correction message
                  toast({
-                     title: actualNewStatus ? "Favorited (Synced)" : "Unfavorited (Synced)",
+                     title: actualNewStatus ? "Pinned (Synced)" : "Unpined (Synced)",
                      description: "Status updated from server.",
                  });
              }
@@ -141,8 +140,8 @@ export const PostCard = React.forwardRef<HTMLDivElement, PostCardProps>(({ post,
             setIsFavorited(previousFavoriteStatus); // Rollback optimistic update
             toast({
                 variant: "destructive",
-                title: "Favorite Failed",
-                description: err.message || "Could not update favorite status.",
+                title: "Pin Failed",
+                description: err.message || "Could not update pinned status.",
             });
         } finally {
              setIsFavoriting(false);
@@ -273,20 +272,25 @@ export const PostCard = React.forwardRef<HTMLDivElement, PostCardProps>(({ post,
                  // Smaller margins, grid setup for images
                  <div className="mt-2 mb-2 grid grid-cols-3 gap-1">
                      {post.imageUrls.slice(0, 3).map((url, index) => ( // Limit to 3 previews
-                         <a key={index} href={url} target="_blank" rel="noopener noreferrer" className="block aspect-square">
-                             <Image // Use next/image
+                         <a
+                             key={index}
+                             href={url}
+                             target="_blank"
+                             rel="noopener noreferrer"
+                             className="block aspect-square relative overflow-hidden rounded border border-border cursor-pointer" // Added relative, overflow-hidden
+                         >
+                             <Image // Use next/image with fill
                                 src={url}
                                 alt={`Post image ${index + 1}`}
-                                width={100} // Provide width/height for layout
-                                height={100}
-                                className="w-full h-full object-cover rounded border border-border cursor-pointer"
+                                fill // Use fill instead of width/height
+                                sizes="(max-width: 640px) 30vw, (max-width: 1024px) 20vw, 15vw" // Provide sizes for optimization
+                                className="object-cover" // Keep object-cover, remove w-full h-full
                                 loading="lazy"
                              />
                          </a>
                      ))}
                  </div>
              )}
-
             {/* Reduced top padding */}
             <div className="mt-auto pt-2 border-t border-border flex items-center justify-between">
                  <div className="flex items-center space-x-2"> {/* Smaller space */}
@@ -297,8 +301,7 @@ export const PostCard = React.forwardRef<HTMLDivElement, PostCardProps>(({ post,
                         aria-pressed={currentUserVote === 'up'}
                         aria-label="Upvote"
                         title="Upvote"
-                    >
-                        {/* Use isVoting state */}
+                    >                        {/* Use isVoting state */}
                         {isVoting && currentUserVote !== 'down' ? <Loader2 className="h-4 w-4 animate-spin"/> : <ThumbsUp className={cn("h-4 w-4", currentUserVote === 'up' ? 'fill-current' : '')} />} {/* Smaller icon */}
                         <span className="text-xs tabular-nums">{currentUpvotes}</span> {/* Smaller text */}
                     </button>
@@ -321,12 +324,11 @@ export const PostCard = React.forwardRef<HTMLDivElement, PostCardProps>(({ post,
                     className={favoriteButtonClass}
                     disabled={!user || isLoading}
                     aria-pressed={isFavorited} // Use isFavorited state
-                    aria-label={isFavorited ? "Unfavorite" : "Favorite"}
-                    title={isFavorited ? "Remove from Favorites" : "Add to Favorites"}
-                >
-                    {/* Use isFavoriting state */}
+                    aria-label={isFavorited ? "Unpin" : "Pin"}
+                    title={isFavorited ? "Remove from Pinned Notices" : "Pin"}
+                >                    {/* Use isFavoriting state */}
                      {isFavoriting ? <Loader2 className="h-4 w-4 animate-spin"/> : <Star className={cn("h-4 w-4", isFavorited ? 'fill-current' : '')} />} {/* Smaller icon */}
-                    <span className="text-xs hidden sm:inline">Favorite</span> {/* Smaller text */}
+                    <span className="text-xs hidden sm:inline">Pinned Notices</span> {/* Smaller text */}
                 </button>
             </div>
         </div>

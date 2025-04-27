@@ -1,40 +1,35 @@
-
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '@/hooks/use-auth';
 import { db } from '@/config/firebase';
 import { collection, query, where, orderBy, limit, getDocs, doc, getDoc } from 'firebase/firestore';
 import type { StudentProfile, Event, Post } from '@/types';
 import LoadingSpinner from '@/components/loading-spinner';
-import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { EventCard } from '@/components/EventCard';
 import { PostCard } from '@/components/PostCard';
-import { Search, Calendar, FileText, Star } from 'lucide-react';
+import { Calendar, FileText } from 'lucide-react';
 import { generateWelcomeMessage } from '@/ai/flows/generate-welcome-message';
-import { getFavoritePostIds } from '@/lib/postActions';
-import { fetchEvents } from '@/lib/eventActions';
+import { getFavoritePostIds, getPostsVoteStatus } from '@/lib/postActions';
+import { fetchEvents, getEventsRegistrationStatus } from '@/lib/eventActions'; // Import modified fetchEvents
 
-export default function HomePageContent() { // Renamed component for clarity
+
+export default function HomePageContent() {
   const { user } = useAuth();
   const [studentData, setStudentData] = useState<StudentProfile | null>(null);
   const [welcomeMessage, setWelcomeMessage] = useState<string | null>(null);
   const [featuredEvents, setFeaturedEvents] = useState<Event[]>([]);
-  const [registeredEvents, setRegisteredEvents] = useState<Event[]>([]);
   const [recentPosts, setRecentPosts] = useState<Post[]>([]);
   const [favoritePostIds, setFavoritePostIds] = useState<string[]>([]);
   const [loadingProfile, setLoadingProfile] = useState(true);
   const [loadingWelcome, setLoadingWelcome] = useState(true);
   const [loadingEvents, setLoadingEvents] = useState(true);
   const [loadingPosts, setLoadingPosts] = useState(true);
-  const [searchTerm, setSearchTerm] = useState('');
-  const [searchResults, setSearchResults] = useState<{ posts: Post[], events: Event[] } | null>(null);
-  const [isSearching, setIsSearching] = useState(false);
 
-  // --- Fetch Student Profile (Copied from previous version) ---
+  // --- Fetch Student Profile ---
    useEffect(() => {
        const fetchStudentData = async () => {
            if (user) {
@@ -66,7 +61,7 @@ export default function HomePageContent() { // Renamed component for clarity
                    setStudentData(profile);
                } catch (error) {
                    console.error("Error fetching student data for homepage:", error);
-                    setStudentData(null); // Set to null on error
+                    setStudentData(null);
                } finally {
                    setLoadingProfile(false);
                }
@@ -78,58 +73,92 @@ export default function HomePageContent() { // Renamed component for clarity
        fetchStudentData();
    }, [user]);
 
-  // --- Fetch Events and Recent Posts (Copied from previous version) ---
+    // --- Fetch Favorites ---
+    useEffect(() => {
+        const fetchFavorites = async () => {
+            if (user) {
+                try {
+                    const favIds = await getFavoritePostIds(user.uid);
+                    setFavoritePostIds(favIds);
+                    console.log("[HomePage] Fetched favorite post IDs:", favIds);
+                } catch (error) {
+                    console.error("Error fetching favorite post IDs:", error);
+                    setFavoritePostIds([]);
+                }
+            } else {
+                setFavoritePostIds([]);
+            }
+        };
+        if (!loadingProfile) {
+             fetchFavorites();
+        }
+    }, [user, loadingProfile]);
+
+  // --- Fetch Events and Recent Posts ---
   useEffect(() => {
       const fetchData = async () => {
-          // Check if profile is needed and available
-           if (user && !studentData && !loadingProfile) {
-              console.log("Homepage waiting for profile data...");
-              return; // Wait if user is logged in but profile isn't loaded yet
+           if (user && loadingProfile) {
+               console.log("[HomePage] Waiting for profile data...");
+               return;
            }
-          if (user && loadingProfile) return; // Still loading profile
 
+          console.log("[HomePage] Fetching Events and Posts...");
           setLoadingEvents(true);
           setLoadingPosts(true);
 
           try {
-               // Pass profile (even if null for logged-out) for filtering
-              const allVisibleEvents = await fetchEvents(studentData);
-
-              // Determine featured events (upcoming)
+              // --- Fetch Events (passing user profile for visibility and UID for enrichment) ---
+              const allVisibleEvents = await fetchEvents(studentData, user?.uid);
               const upcomingEvents = allVisibleEvents
                   .filter(e => e.startTime && e.startTime.toDate() > new Date())
                   .sort((a, b) => (a.startTime?.toMillis() ?? 0) - (b.startTime?.toMillis() ?? 0));
-              setFeaturedEvents(upcomingEvents.slice(0, 5)); // Show top 5 upcoming
+              setFeaturedEvents(upcomingEvents.slice(0, 5));
+              console.log("[HomePage] Featured events fetched and enriched:", featuredEvents.length);
 
-              setRegisteredEvents([]); // Placeholder
-
-               // Fetch recent posts with client-side visibility filter
+               // --- Fetch Posts ---
                const postsQuery = query(
                    collection(db, 'posts'),
                    orderBy('timestamp', 'desc'),
                    limit(3)
                );
                const postsSnapshot = await getDocs(postsQuery);
-               const recent = postsSnapshot.docs
-                   .map(doc => ({ id: doc.id, ...doc.data() } as Post))
-                   .filter(post => {
-                       if (!studentData) { // If no profile (logged out or failed load)
-                          // Only show posts with no visibility restrictions
-                           return !post.visibility || (
-                               (post.visibility.branches?.length ?? 0) === 0 &&
-                               (post.visibility.yearsOfPassing?.length ?? 0) === 0 &&
-                               (post.visibility.genders?.length ?? 0) === 0
-                           );
-                       }
-                       // If profile exists, filter based on it
-                       const visibility = post.visibility;
-                       if (!visibility) return true;
-                       const isBranchVisible = (visibility.branches?.length ?? 0) === 0 || visibility.branches?.includes(studentData.branch);
-                       const isYearVisible = (visibility.yearsOfPassing?.length ?? 0) === 0 || visibility.yearsOfPassing?.includes(studentData.yearOfPassing);
-                       const isGenderVisible = (visibility.genders?.length ?? 0) === 0 || visibility.genders?.includes(studentData.gender);
-                       return isBranchVisible && isYearVisible && isGenderVisible;
-                   });
-               setRecentPosts(recent);
+               let recentBasePosts = postsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Post));
+               console.log("[HomePage] Base recent posts fetched:", recentBasePosts.length);
+
+               const visiblePosts = recentBasePosts.filter(post => {
+                   if (!studentData) {
+                       return !post.visibility || ((post.visibility.branches?.length ?? 0) === 0 && (post.visibility.yearsOfPassing?.length ?? 0) === 0 && (post.visibility.genders?.length ?? 0) === 0);
+                   }
+                   const visibility = post.visibility;
+                   if (!visibility) return true;
+                   const isBranchVisible = (visibility.branches?.length ?? 0) === 0 || visibility.branches?.includes(studentData.branch);
+                   const isYearVisible = (visibility.yearsOfPassing?.length ?? 0) === 0 || visibility.yearsOfPassing?.includes(studentData.yearOfPassing);
+                   const isGenderVisible = (visibility.genders?.length ?? 0) === 0 || visibility.genders?.includes(studentData.gender);
+                   return isBranchVisible && isYearVisible && isGenderVisible;
+               });
+               console.log("[HomePage] Visible recent posts count:", visiblePosts.length);
+
+                let enrichedRecentPosts: Post[];
+                if (user && visiblePosts.length > 0) {
+                    const postIds = visiblePosts.map(p => p.id);
+                    console.log("[HomePage] Fetching vote statuses for recent posts:", postIds);
+                    const voteStatuses = await getPostsVoteStatus(user.uid, postIds);
+                    console.log("[HomePage] Vote statuses received for recent posts:", JSON.stringify(voteStatuses));
+
+                    enrichedRecentPosts = visiblePosts.map(post => ({
+                        ...post,
+                        userVote: voteStatuses[post.id] ?? null,
+                        isFavorite: favoritePostIds.includes(post.id)
+                    }));
+                } else {
+                    enrichedRecentPosts = visiblePosts.map(post => ({
+                         ...post,
+                         userVote: null,
+                         isFavorite: false
+                    }));
+                }
+               console.log("[HomePage] Enriched recent posts ready.");
+               setRecentPosts(enrichedRecentPosts);
 
           } catch (error) {
               console.error("Error fetching homepage data:", error);
@@ -139,138 +168,55 @@ export default function HomePageContent() { // Renamed component for clarity
           }
       };
 
-       // Fetch data only when profile loading is complete OR if the user is logged out
        if (!loadingProfile) {
            fetchData();
        }
-  }, [studentData, loadingProfile, user]); // Added user dependency
+  }, [studentData, loadingProfile, user, favoritePostIds]);
 
-  // --- Fetch Favorites and Generate Welcome Message (Copied from previous version) ---
+  // --- Generate Welcome Message ---
    useEffect(() => {
-        const fetchFavoritesAndGenerateMessage = async () => {
-             // Wait for profile if user is logged in
-             if (user && !studentData && loadingProfile) {
-                return;
+        const generateAndSetWelcomeMessage = async () => {
+             if ((user && !studentData) || loadingEvents) {
+                 console.log("[HomePage] Welcome message waiting...");
+                 return;
              }
 
+             console.log("[HomePage] Generating welcome message...");
              setLoadingWelcome(true);
              try {
-                 if (user && studentData) { // Generate personalized message
-                     const favIds = await getFavoritePostIds(user.uid);
-                     setFavoritePostIds(favIds);
-
+                 if (user && studentData) {
                      const favoritePostTitles: string[] = [];
-                      if (favIds.length > 0) {
-                          // Limit query to avoid large 'in' arrays if needed
-                          const favQuery = query(collection(db, 'posts'), where('__name__', 'in', favIds.slice(0, 10)));
+                      if (favoritePostIds.length > 0) {
+                          const favQuery = query(collection(db, 'posts'), where('__name__', 'in', favoritePostIds.slice(0, 10)));
                           const favSnapshot = await getDocs(favQuery);
                           favSnapshot.forEach(doc => favoritePostTitles.push(doc.data().title));
                       }
-
                      const eventTitlesForPrompt = featuredEvents.slice(0, 3).map(e => e.title);
 
                      const message = await generateWelcomeMessage({
-                         studentName: studentData.name || 'Student', // Fallback name
+                         studentName: studentData.name || 'Student',
                          registeredEventTitles: eventTitlesForPrompt,
                          favoritedPostTitles: favoritePostTitles,
                      });
                      setWelcomeMessage(message.welcomeMessage);
-
-                 } else { // Generic message for logged-out users or profile error
+                     console.log("[HomePage] Personalized welcome message generated.");
+                 } else {
                      setWelcomeMessage("Welcome to IIIT Bhopal Connect!");
-                     setFavoritePostIds([]); // Clear favorites if not logged in
+                     console.log("[HomePage] Generic welcome message set.");
                  }
-
              } catch (error) {
-                 console.error("Error generating welcome message or fetching favorites:", error);
-                 // Provide a fallback based on user/profile state
-                 setWelcomeMessage(`Welcome back, ${studentData?.name || 'Student'}!`);
+                 console.error("Error generating welcome message:", error);
+                 setWelcomeMessage(`Welcome back, ${studentData?.name || 'Student'}!`); // Fallback
              } finally {
                  setLoadingWelcome(false);
              }
         };
 
-         // Trigger when profile and events loading are finished
          if (!loadingProfile && !loadingEvents) {
-             fetchFavoritesAndGenerateMessage();
+            generateAndSetWelcomeMessage();
          }
-   }, [user, studentData, featuredEvents, loadingProfile, loadingEvents]);
+   }, [user, studentData, featuredEvents, favoritePostIds, loadingProfile, loadingEvents]);
 
-
-  // --- Handle Search (Copied from previous version) ---
-  const handleSearch = async (e?: React.FormEvent) => {
-      e?.preventDefault();
-      if (!searchTerm.trim()) {
-          setSearchResults(null);
-          return;
-      }
-      setIsSearching(true);
-      setSearchResults(null);
-
-      try {
-           const postsQuery = query(
-              collection(db, 'posts'),
-              where('title', '>=', searchTerm),
-              where('title', '<=', searchTerm + '\uf8ff'),
-              orderBy('title'),
-              limit(10)
-          );
-           const eventsQuery = query(
-              collection(db, 'events'),
-               where('title', '>=', searchTerm),
-               where('title', '<=', searchTerm + '\uf8ff'),
-               orderBy('title'),
-               limit(10)
-          );
-
-          const [postsSnap, eventsSnap] = await Promise.all([
-              getDocs(postsQuery),
-              getDocs(eventsQuery)
-          ]);
-
-          let postsResults = postsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Post));
-          let eventsResults = eventsSnap.docs.map(doc => ({ id: doc.id, ...doc.data() } as Event));
-
-           // Apply visibility filtering based on logged-in user's profile
-            if (studentData) {
-               postsResults = postsResults.filter(post => {
-                   const visibility = post.visibility;
-                   if (!visibility) return true;
-                   const isBranchVisible = (visibility.branches?.length ?? 0) === 0 || visibility.branches?.includes(studentData.branch);
-                   const isYearVisible = (visibility.yearsOfPassing?.length ?? 0) === 0 || visibility.yearsOfPassing?.includes(studentData.yearOfPassing);
-                   const isGenderVisible = (visibility.genders?.length ?? 0) === 0 || visibility.genders?.includes(studentData.gender);
-                   return isBranchVisible && isYearVisible && isGenderVisible;
-               });
-               eventsResults = eventsResults.filter(event => {
-                   const visibility = event.visibility;
-                   if (!visibility) return true;
-                   const isBranchVisible = (visibility.branches?.length ?? 0) === 0 || visibility.branches?.includes(studentData.branch);
-                   const isYearVisible = (visibility.yearsOfPassing?.length ?? 0) === 0 || visibility.yearsOfPassing?.includes(studentData.yearOfPassing);
-                   const isGenderVisible = (visibility.genders?.length ?? 0) === 0 || visibility.genders?.includes(studentData.gender);
-                   return isBranchVisible && isYearVisible && isGenderVisible;
-               });
-           } else {
-               // Filter for public items if not logged in / no profile
-               postsResults = postsResults.filter(post => !post.visibility || (
-                    (post.visibility.branches?.length ?? 0) === 0 &&
-                    (post.visibility.yearsOfPassing?.length ?? 0) === 0 &&
-                    (post.visibility.genders?.length ?? 0) === 0
-               ));
-               eventsResults = eventsResults.filter(event => !event.visibility || (
-                    (event.visibility.branches?.length ?? 0) === 0 &&
-                    (event.visibility.yearsOfPassing?.length ?? 0) === 0 &&
-                    (event.visibility.genders?.length ?? 0) === 0
-               ));
-           }
-
-          setSearchResults({ posts: postsResults, events: eventsResults });
-
-      } catch (error) {
-          console.error("Search error:", error);
-      } finally {
-          setIsSearching(false);
-      }
-  };
 
   const isLoading = loadingProfile || loadingEvents || loadingPosts || loadingWelcome;
 
@@ -289,114 +235,67 @@ export default function HomePageContent() { // Renamed component for clarity
         </CardHeader>
       </Card>
 
-      {/* Universal Search Bar */}
-      <form onSubmit={handleSearch} className="relative">
-        <Input
-          type="search"
-          placeholder="Search posts and events..."
-          className="w-full pl-10 pr-20 py-2 text-base border-2"
-          value={searchTerm}
-          onChange={(e) => setSearchTerm(e.target.value)}
-        />
-        <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-5 w-5 text-muted-foreground" />
-         <Button type="submit" className="absolute right-1 top-1/2 transform -translate-y-1/2 h-8 px-3" size="sm" disabled={isSearching}>
-             {isSearching ? 'Searching...' : 'Search'}
-         </Button>
-      </form>
+      {/* Universal Search Bar REMOVED */}
 
-      {/* Main Content Area (Search Results or Default Layout) */}
+      {/* Main Content Area */}
       <div className="flex flex-col md:flex-row gap-8">
 
-        {/* --- Main Content (Left Side - 2/3 width approx) --- */}
+        {/* Left Side - Recent Posts */}
         <div className="w-full md:w-2/3 space-y-8">
-          {/* Search Results */}
-          {isSearching && <div className="text-center p-4"><LoadingSpinner /> Searching...</div>}
-          {searchResults && (
-              <Card>
-                  <CardHeader>
-                      <CardTitle>Search Results for "{searchTerm}"</CardTitle>
-                  </CardHeader>
-                  <CardContent className="space-y-4">
-                      {searchResults.posts.length > 0 && (
-                           <div>
-                              <h3 className="text-lg font-semibold mb-2 flex items-center gap-2"><FileText className="h-5 w-5" /> Posts</h3>
-                              <div className="space-y-4">
-                                   {searchResults.posts.map(post => (
-                                       // Adjust PostCard usage if needed
-                                        <PostCard key={post.id} post={post} />
-                                   ))}
-                              </div>
-                           </div>
-                      )}
-                       {searchResults.events.length > 0 && searchResults.posts.length === 0 && (
-                           <p className="text-muted-foreground">No matching posts. Event results are shown on the right.</p>
-                       )}
-                      {searchResults.posts.length === 0 && searchResults.events.length === 0 && (
-                          <p className="text-muted-foreground text-center">No results found.</p>
-                      )}
-                  </CardContent>
-              </Card>
-          )}
-
-          {/* Recent Posts Section (shown if not searching) */}
-           {!searchResults && (
               <Card>
                 <CardHeader>
-                  <CardTitle>Recent Posts</CardTitle>
+                  <CardTitle>Recent Notices</CardTitle>
                   <CardDescription>Latest updates from the community.</CardDescription>
                 </CardHeader>
                 <CardContent>
                   {loadingPosts ? (
                     <div className="text-center py-4"><LoadingSpinner /></div>
                   ) : recentPosts.length > 0 ? (
-                     // Horizontal scroll for recent posts
                     <ScrollArea className="w-full whitespace-nowrap pb-4">
                          <div className="flex w-max space-x-4">
                            {recentPosts.map(post => (
-                             <div key={post.id} className="w-72 flex-shrink-0">
+                             <div key={post.id} className="w-72 flex-shrink-0 h-full">
                                 <PostCard post={post} />
                              </div>
                            ))}
                          </div>
                     </ScrollArea>
                   ) : (
-                    <p className="text-muted-foreground text-sm text-center py-4">No recent posts.</p>
+                    <p className="text-muted-foreground text-sm text-center py-4">No recent posts to display.</p>
                   )}
                 </CardContent>
               </Card>
-           )}
         </div>
 
-         {/* --- Sidebar Content (Right Side - 1/3 width approx) --- */}
+         {/* Right Side - Featured Events */}
          <div className="w-full md:w-1/3 space-y-8">
-              {/* Events Section (Featured or Search Results) */}
               <Card>
                 <CardHeader>
-                  <CardTitle>
-                      {searchResults ? 'Event Results' : 'Featured Events'}
-                  </CardTitle>
-                   <CardDescription>
-                       {searchResults ? `Events matching "${searchTerm}"` : 'Upcoming campus activities.'}
-                   </CardDescription>
+                  <CardTitle>Featured Events</CardTitle>
+                   <CardDescription>Upcoming campus activities.</CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
-                   {loadingEvents && !searchResults ? ( // Show loading only for initial featured load
+                   {loadingEvents ? (
                        <div className="text-center py-4"><LoadingSpinner /></div>
                    ) : (
-                       <ScrollArea className="h-96 pr-4"> {/* Adjust height as needed */}
+                       <ScrollArea className="h-96 pr-4">
                           <div className="space-y-4">
-                             {(searchResults?.events ?? featuredEvents).length > 0 ? (
-                                 (searchResults?.events ?? featuredEvents).map(event => (
-                                     <EventCard key={event.id} event={event} currentUser={user} currentStudentProfile={studentData} onUpdate={() => {
-                                         // Refetch or re-run search if needed
-                                         if (searchResults) handleSearch();
-                                         // Else, refetch featured events if necessary (e.g., after registration)
-                                         else { /* TODO: Refetch featured events if needed */ }
-                                     }} />
+                             {featuredEvents.length > 0 ? (
+                                 featuredEvents.map(event => (
+                                     <EventCard
+                                         key={event.id}
+                                         event={event} // Pass enriched event
+                                         currentUser={user}
+                                         currentStudentProfile={studentData}
+                                         onUpdate={() => {
+                                             // Reload events or update state if necessary after interactions
+                                            // For now, just a placeholder
+                                         }}
+                                    />
                                  ))
                              ) : (
                                  <p className="text-muted-foreground text-sm text-center py-4">
-                                     {searchResults ? 'No matching events found.' : 'No featured events right now.'}
+                                     No featured events right now.
                                  </p>
                              )}
                           </div>
@@ -404,13 +303,8 @@ export default function HomePageContent() { // Renamed component for clarity
                    )}
                 </CardContent>
               </Card>
-
-              {/* Placeholder for Registered Events if needed */}
-              {/* {!searchResults && user && ... } */}
          </div>
       </div>
     </div>
   );
 }
-
-    

@@ -60,7 +60,7 @@ const UserPosts: FC<UserPostsProps> = ({ user, studentData }) => {
                         getFavoritePostIds(user.uid) // Assume this returns an array of favorited post IDs
                     ]);
                 } catch (statusError) {
-                    console.error("Error fetching status for user posts:", statusError);
+                    console.error("Error fetching status for user notices:", statusError);
                     // Continue without status
                 }
             }
@@ -74,13 +74,13 @@ const UserPosts: FC<UserPostsProps> = ({ user, studentData }) => {
             setUserPosts(postsWithStatus);
 
         } catch (err: any) {
-            console.error("Error fetching user posts:", err);
-            setError("Failed to load your posts.");
+            console.error("Error fetching user notices:", err);
+            setError("Failed to load your notices.");
              // Handle specific Firebase permission errors
              if (err.code === 'permission-denied') {
-                setError("You don't have permission to view your posts (check Firestore rules).");
+                setError("You don't have permission to view your notices (check Firestore rules).");
              } else {
-                setError(err.message || "Failed to load your posts.");
+                setError(err.message || "Failed to load your notices.");
              }
              setUserPosts([]); // Clear posts on error
         } finally {
@@ -118,7 +118,7 @@ const UserPosts: FC<UserPostsProps> = ({ user, studentData }) => {
 
 
     if (loading) {
-        return <div className="text-center py-10"><LoadingSpinner /> Loading your posts...</div>;
+        return <div className="text-center py-10"><LoadingSpinner /> Loading your notices...</div>;
     }
 
     if (error) {
@@ -127,16 +127,16 @@ const UserPosts: FC<UserPostsProps> = ({ user, studentData }) => {
 
     // This check should ideally be handled by the parent (Dashboard), but added here for safety
     if (!user) {
-         return <p className="text-center py-10 text-muted-foreground">Please log in to view your posts.</p>;
+         return <p className="text-center py-10 text-muted-foreground">Please log in to view your notices.</p>;
     }
 
     if (userPosts.length === 0) {
-        return <p className="text-center py-10 text-muted-foreground">You haven't created any posts yet.</p>;
+        return <p className="text-center py-10 text-muted-foreground">You haven't created any Notices yet.</p>;
     }
 
     return (
         <div className="user-posts-container max-w-3xl mx-auto p-4 space-y-6">
-            <h2 className="text-2xl font-semibold mb-4 border-b pb-2">Your Posts</h2>
+            <h2 className="text-2xl font-semibold mb-4 border-b pb-2">Your Notices</h2>
 
              {/* --- Edit Post Form Modal --- */}
              {editingPost && (

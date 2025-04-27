@@ -204,52 +204,108 @@ export async function updateEvent(
 
 
 // === Fetching Events ===
-// Fetch all events initially, then filter client-side based on user's profile
-export async function fetchEvents(userProfile?: StudentProfile | null): Promise<Event[]> {
+// Fetch events, filter by visibility, and enrich with user-specific like/registration status.
+export async function fetchEvents(
+    userProfile?: StudentProfile | null, // For visibility filtering
+    userId?: string | null // For checking like/registration status
+): Promise<Event[]> {
+    console.log(`[fetchEvents] Called with userId: ${userId ?? 'none'}`);
     try {
         const q = query(collection(db, EVENTS_COLLECTION), orderBy('createdAt', 'desc'));
         const querySnapshot = await getDocs(q);
         const allEvents = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Event));
 
-        // Filter based on visibility if user profile is provided
+        // 1. Filter based on visibility
+        let visibleEvents: Event[];
         if (userProfile) {
              console.log("[fetchEvents] Filtering events for profile:", userProfile.scholarNumber);
-            return allEvents.filter(event => {
+             visibleEvents = allEvents.filter(event => {
                 const visibility = event.visibility;
-                // If no visibility settings, it's visible to all
-                if (!visibility) return true;
-
-                const isBranchVisible = visibility.branches?.length === 0 || visibility.branches?.includes(userProfile.branch);
-                const isYearVisible = visibility.yearsOfPassing?.length === 0 || visibility.yearsOfPassing?.includes(userProfile.yearOfPassing);
-                const isGenderVisible = visibility.genders?.length === 0 || visibility.genders?.includes(userProfile.gender);
-
+                if (!visibility) return true; // Visible if no settings
+                const isBranchVisible = (visibility.branches?.length ?? 0) === 0 || visibility.branches?.includes(userProfile.branch);
+                const isYearVisible = (visibility.yearsOfPassing?.length ?? 0) === 0 || visibility.yearsOfPassing?.includes(userProfile.yearOfPassing);
+                const isGenderVisible = (visibility.genders?.length ?? 0) === 0 || visibility.genders?.includes(userProfile.gender);
                 return isBranchVisible && isYearVisible && isGenderVisible;
             });
         } else {
-             // If no profile (e.g., logged out), filter for public events only
-             console.log("[fetchEvents] No profile provided, filtering for public events.");
-            return allEvents.filter(event => {
+             console.log("[fetchEvents] No profile, filtering for public events.");
+             visibleEvents = allEvents.filter(event => {
                  const visibility = event.visibility;
-                 // Visible if no restrictions are set
-                 return !visibility ||
-                        (visibility.branches?.length === 0 &&
-                         visibility.yearsOfPassing?.length === 0 &&
-                         visibility.genders?.length === 0);
+                 return !visibility || ((visibility.branches?.length ?? 0) === 0 && (visibility.yearsOfPassing?.length ?? 0) === 0 && (visibility.genders?.length ?? 0) === 0);
             });
         }
+        console.log(`[fetchEvents] ${visibleEvents.length} events visible after filtering.`);
+
+        // 2. Enrich with user-specific data (like/registration status) if userId is provided
+        if (userId && visibleEvents.length > 0) {
+            console.log(`[fetchEvents] Enriching ${visibleEvents.length} visible events for user ${userId}...`);
+            // Check registration status in batch
+            const eventIds = visibleEvents.map(e => e.id);
+            const registrationStatuses = await getEventsRegistrationStatus(userId, eventIds);
+            console.log(`[fetchEvents] Registration statuses fetched:`, registrationStatuses);
+
+            // Map to add userLikeStatus and isRegistered
+            const enrichedEvents = visibleEvents.map(event => {
+                let userLikeStatus: 'liked' | 'disliked' | null = null;
+                if (event.likes?.includes(userId)) {
+                    userLikeStatus = 'liked';
+                } else if (event.dislikes?.includes(userId)) {
+                    userLikeStatus = 'disliked';
+                }
+                const isRegistered = registrationStatuses[event.id] ?? false;
+                return { ...event, userLikeStatus, isRegistered };
+            });
+            console.log(`[fetchEvents] Enrichment complete.`);
+            return enrichedEvents;
+        } else {
+            // If no user or no visible events, return events without enrichment (or set defaults)
+            console.log(`[fetchEvents] No user or no visible events, returning ${visibleEvents.length} events without enrichment.`);
+            return visibleEvents.map(event => ({ ...event, userLikeStatus: null, isRegistered: false }));
+        }
+
     } catch (error) {
         console.error("[fetchEvents] Error: ", error);
         throw new Error(`Could not fetch events: ${(error as Error).message}`);
     }
 }
 
-// Fetch events created BY the user (visibility doesn't apply here)
-export async function fetchUserEvents(userId: string): Promise<Event[]> {
+// Fetch events created BY the user
+export async function fetchUserEvents(
+    userId: string,
+    // Add currentUserId to check like/registration status for events listed on "My Events"
+    currentUserId?: string | null
+): Promise<Event[]> {
     if (!userId) return [];
+    console.log(`[fetchUserEvents] Fetching events created by ${userId}. Current user: ${currentUserId ?? 'none'}`);
     try {
         const q = query(collection(db, EVENTS_COLLECTION), where('postedBy', '==', userId), orderBy('createdAt', 'desc'));
         const querySnapshot = await getDocs(q);
-        return querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Event));
+        const userCreatedEvents = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Event));
+        console.log(`[fetchUserEvents] Found ${userCreatedEvents.length} events created by ${userId}.`);
+
+        // Enrich with current user's like/registration status if provided
+        if (currentUserId && userCreatedEvents.length > 0) {
+            console.log(`[fetchUserEvents] Enriching events for current user ${currentUserId}...`);
+            const eventIds = userCreatedEvents.map(e => e.id);
+            const registrationStatuses = await getEventsRegistrationStatus(currentUserId, eventIds);
+
+            const enrichedEvents = userCreatedEvents.map(event => {
+                let userLikeStatus: 'liked' | 'disliked' | null = null;
+                if (event.likes?.includes(currentUserId)) {
+                    userLikeStatus = 'liked';
+                } else if (event.dislikes?.includes(currentUserId)) {
+                    userLikeStatus = 'disliked';
+                }
+                 const isRegistered = registrationStatuses[event.id] ?? false;
+                return { ...event, userLikeStatus, isRegistered };
+            });
+            console.log(`[fetchUserEvents] Enrichment complete.`);
+            return enrichedEvents;
+        } else {
+             // Return basic data if no current user or no events found
+             return userCreatedEvents.map(event => ({ ...event, userLikeStatus: null, isRegistered: false }));
+        }
+
     } catch (error) {
         console.error(`[fetchUserEvents] Error for ${userId}: `, error);
         throw new Error(`Could not fetch user events: ${(error as Error).message}`);
@@ -283,9 +339,44 @@ export async function registerForEvent(eventId: string, userProfile: StudentProf
 export async function checkRegistrationStatus(eventId: string, userId: string): Promise<boolean> {
     if (!userId) return false;
     const registrationRef = doc(db, `${EVENTS_COLLECTION}/${eventId}/registrations`, userId);
-    try { return (await getDoc(registrationRef)).exists(); }
-    catch (error) { console.error(`[checkRegStatus] Error ${userId}, ${eventId}:`, error); return false; }
+    try { 
+        const docSnap = await getDoc(registrationRef);
+        return docSnap.exists(); 
+    }
+    catch (error) { 
+        console.error(`[checkRegStatus] Error checking registration for user ${userId} on event ${eventId}:`, error); 
+        return false; 
+    }
 }
+
+export async function getEventsRegistrationStatus(userId: string, eventIds: string[]): Promise<Record<string, boolean>> {
+    if (!userId || eventIds.length === 0) return {};
+
+    const registrationStatuses: Record<string, boolean> = {};
+    eventIds.forEach(id => registrationStatuses[id] = false);
+
+    // Firestore 'in' query is limited to 10? No, doc gets are fine.
+    // Check docs individually for now, batching might be complex with subcollections
+    const checks = eventIds.map(async (eventId) => {
+        const registrationRef = doc(db, `${EVENTS_COLLECTION}/${eventId}/registrations`, userId);
+        try {
+            const docSnap = await getDoc(registrationRef);
+            return { eventId, isRegistered: docSnap.exists() };
+        } catch (error) {
+            console.error(`[getEventsRegStatus] Error checking registration for user ${userId} on event ${eventId}:`, error);
+            return { eventId, isRegistered: false };
+        }
+    });
+
+    const results = await Promise.all(checks);
+    results.forEach(result => {
+        registrationStatuses[result.eventId] = result.isRegistered;
+    });
+
+    console.log(`[getEventsRegStatus] Checked ${eventIds.length} events for user ${userId}. Results:`, registrationStatuses);
+    return registrationStatuses;
+}
+
 
 export async function fetchEventRegistrations(eventId: string): Promise<EventRegistration[]> {
     try {

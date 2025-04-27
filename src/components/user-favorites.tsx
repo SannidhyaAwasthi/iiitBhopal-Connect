@@ -69,7 +69,7 @@ const UserFavorites: FC<UserFavoritesProps> = ({ user, studentData }) => {
                     try {
                        voteStatuses = await getPostsVoteStatus(user.uid, visiblePostIds);
                     } catch (statusError) {
-                       console.error("Error fetching vote status for favorites:", statusError);
+                       console.error("Error fetching vote status for notices:", statusError);
                     }
                  }
 
@@ -103,7 +103,7 @@ const UserFavorites: FC<UserFavoritesProps> = ({ user, studentData }) => {
     }, [user]); // Re-fetch if the user changes
 
     if (loading) {
-        return <div className="text-center py-10"><LoadingSpinner /> Loading favorites...</div>;
+        return <div className="text-center py-10"><LoadingSpinner /> Loading pinned notices...</div>;
     }
 
     if (error) {
@@ -112,17 +112,17 @@ const UserFavorites: FC<UserFavoritesProps> = ({ user, studentData }) => {
 
     // This check should ideally be handled by the parent (Dashboard), but added for safety
     if (!user) {
-         return <p className="text-center py-10 text-muted-foreground">Please log in to view your favorites.</p>;
+         return <p className="text-center py-10 text-muted-foreground">Please log in to view your pinned notices.</p>;
     }
 
 
     if (favoritePosts.length === 0) {
-        return <p className="text-center py-10 text-muted-foreground">You haven't favorited any posts yet.</p>;
+        return <p className="text-center py-10 text-muted-foreground">You haven't pinned any notices yet.</p>;
     }
 
     return (
         <div className="user-favorites-container max-w-3xl mx-auto p-4 space-y-6">
-            <h2 className="text-2xl font-semibold mb-4 border-b pb-2">Your Favorite Posts</h2>
+            <h2 className="text-2xl font-semibold mb-4 border-b pb-2">Your Pinned Notices</h2>
             <div className="posts-list space-y-4">
                 {favoritePosts.map(post => (
                     <PostCard key={post.id} post={post} />
