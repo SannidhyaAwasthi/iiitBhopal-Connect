@@ -1,4 +1,3 @@
-
 'use client'; // Required for using usePathname
 
 import type { Metadata } from 'next';
@@ -6,7 +5,7 @@ import { Inter } from 'next/font/google'; // Use Inter font
 import './globals.css';
 import { FirebaseProvider } from '@/context/firebase-context';
 import { Toaster } from "@/components/ui/toaster";
-import Dashboard from '@/components/dashboard'; // Import the Dashboard component
+import { Dashboard } from '@/components/dashboard'; // Import the Dashboard component
 import { usePathname } from 'next/navigation';
 
 const inter = Inter({ subsets: ['latin'] }); // Initialize Inter font
@@ -52,6 +51,5 @@ export default function RootLayout({
       </body>
     </html>
   );
-}
 
     

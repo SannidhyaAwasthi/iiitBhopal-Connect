@@ -1,13 +1,11 @@
-'use client';
-
-import { useState, useEffect, useCallback } from 'react'; // Added useCallback
+import { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '@/hooks/use-auth';
 import { doc, getDoc } from 'firebase/firestore';
 import { db } from '@/config/firebase';
 import { SidebarProvider, Sidebar, SidebarHeader, SidebarContent, SidebarFooter, SidebarTrigger, SidebarInset, SidebarMenu, SidebarMenuItem, SidebarMenuButton } from '@/components/ui/sidebar';
 import { Avatar, AvatarFallback } from '@/components/ui/avatar';
 import { Button } from '@/components/ui/button';
-import { Home, FileText, Search, Calendar, LogOut, User as UserIconLucide, ListOrdered, ListPlus, Star, CalendarCheck } from 'lucide-react';
+import { Home, FileText, Search, Calendar, LogOut, User as UserIconLucide, ListOrdered, ListPlus, Star, CalendarCheck, Briefcase } from 'lucide-react'; // Added Briefcase icon
 import { signOut } from 'firebase/auth';
 import { auth } from '@/config/firebase';
 import { useRouter } from 'next/navigation';
@@ -23,8 +21,8 @@ import UserProfile from './UserProfile';
 import UserPosts from './user-posts';
 import UserFavorites from './user-favorites';
 import UserEvents from './user-events';
-import { CreatePostForm } from './CreatePostForm';
 import HomePageContent from '../app/home/page'; // Assuming this path is correct
+import { OpportunitiesFeed } from './OpportunitiesFeed'; // Import OpportunitiesFeed
 
 // --- Utility Functions ---
 const getGreeting = () => {
@@ -44,7 +42,7 @@ const getInitials = (name: string = '') => {
 };
 
 // --- Dashboard Component ---
-export default function Dashboard({ children }: { children?: React.ReactNode }) { // Default export and accept children
+export function Dashboard({ children }: { children?: React.ReactNode }) { // Export Dashboard
   const { user, loading: isAuthLoading } = useAuth();
   const [studentData, setStudentData] = useState<StudentProfile | null>(null);
   const [loadingProfile, setLoadingProfile] = useState(false);
@@ -55,20 +53,13 @@ export default function Dashboard({ children }: { children?: React.ReactNode }) 
 
   // --- Fetch Student Data Callback ---
   const fetchStudentData = useCallback(async (forceRefresh = false) => {
-      // Only fetch if auth is loaded AND user exists.
       if (!isAuthLoading && user) {
         if (!forceRefresh && studentData && !loadingProfile) {
              console.log("[Dashboard fetchStudentData] Profile data exists and not forced refresh, skipping fetch.");
              return;
         }
-
         console.log(`[Dashboard fetchStudentData] Fetching profile for user (${user.uid}). Force refresh: ${forceRefresh}`);
         setLoadingProfile(true);
-        // Don't clear existing data immediately on refresh unless forced without prior data
-        // if (forceRefresh || !studentData) {
-        //     setStudentData(null);
-        // }
-
         try {
           const uidMapRef = doc(db, 'students-by-uid', user.uid);
           const uidMapSnap = await getDoc(uidMapRef);
@@ -78,46 +69,40 @@ export default function Dashboard({ children }: { children?: React.ReactNode }) 
           const studentDocRef = doc(db, 'students', scholarNumber);
           const studentDocSnap = await getDoc(studentDocRef);
           if (!studentDocSnap.exists()) throw new Error(`Student profile not found: ${scholarNumber}`);
-
-           const fetchedData = studentDocSnap.data() as Omit<StudentProfile, 'gender'> & { gender?: StudentProfile['gender'], resumeUrl?: string | null }; // Include resumeUrl
+           const fetchedData = studentDocSnap.data() as Omit<StudentProfile, 'gender'> & { gender?: StudentProfile['gender'], resumeUrl?: string | null };
             setStudentData({
                 ...fetchedData,
                 name: fetchedData.name || user.displayName || "Student",
                 scholarNumber: fetchedData.scholarNumber || "N/A", email: fetchedData.email || user.email || "N/A",
                 branch: fetchedData.branch || 'Unknown', yearOfPassing: fetchedData.yearOfPassing || 0, programType: fetchedData.programType || 'Undergraduate',
                 specialRoles: fetchedData.specialRoles || [], phoneNumber: fetchedData.phoneNumber || '', uid: user.uid, gender: fetchedData.gender || 'Unknown',
-                resumeUrl: fetchedData.resumeUrl || null, // Add resumeUrl
+                resumeUrl: fetchedData.resumeUrl || null,
             });
             console.log("[Dashboard fetchStudentData] Profile fetched successfully.");
         } catch (error: any) {
           console.error("[Dashboard fetchStudentData] Error fetching student data:", error);
-            // Provide a fallback profile structure on error
              setStudentData({
                 name: user.displayName || "Student",
                 scholarNumber: "N/A", email: user.email || "N/A",
                 branch: 'Error', yearOfPassing: 0, programType: 'Unknown',
                 specialRoles: [], phoneNumber: '', uid: user.uid, gender: 'Unknown',
-                resumeUrl: null, // Default resumeUrl to null on error
+                resumeUrl: null,
             });
              toast({ variant: "destructive", title: "Profile Error", description: `Could not load your profile data. ${error.message}` });
         } finally {
           setLoadingProfile(false);
         }
       } else if (!isAuthLoading && user === null) {
-        // If auth is loaded but user is null, clear data
         console.log("[Dashboard fetchStudentData] Auth loaded, user is null. Clearing profile data.");
         setStudentData(null);
         setLoadingProfile(false);
       }
-  }, [isAuthLoading, user, toast, studentData, loadingProfile]); // Add studentData and loadingProfile as dependencies
+  }, [isAuthLoading, user, toast, studentData, loadingProfile]);
 
-
-  // --- Effect for Client-Side Greeting ---
   useEffect(() => {
     setDisplayGreeting(getGreeting());
   }, []);
 
-  // --- Effect for Redirecting if Logged Out ---
   useEffect(() => {
     if (!isAuthLoading && user === null) {
       console.log("[Dashboard Effect] Auth loaded, user is null. Redirecting to /login...");
@@ -125,20 +110,17 @@ export default function Dashboard({ children }: { children?: React.ReactNode }) 
     }
   }, [isAuthLoading, user, router]);
 
-  // --- Effect for Initial Profile Fetch ---
   useEffect(() => {
-    fetchStudentData(); // Initial fetch when component mounts or user changes
-  }, [fetchStudentData]); // Depend on the memoized fetch function
+    fetchStudentData();
+  }, [fetchStudentData]);
 
-  // --- Handle Logout ---
   const handleLogout = async () => {
     console.log("handleLogout: Attempting sign out...");
     try {
       await signOut(auth);
       toast({ title: "Logged Out" });
-      setActiveSection('home'); // Reset section on logout
-      setStudentData(null); // Clear student data immediately
-      // Redirect is handled by the [isAuthLoading, user, router] effect
+      setActiveSection('home');
+      setStudentData(null);
       console.log("handleLogout: Sign out successful.");
     } catch (error) {
       console.error('handleLogout: Logout error:', error);
@@ -146,12 +128,10 @@ export default function Dashboard({ children }: { children?: React.ReactNode }) 
     }
   };
 
-  // --- Navigation Handler ---
   const handleNavigate = (section: string) => {
       setActiveSection(section);
   };
 
-  // --- Render Logic ---
   if (isAuthLoading) {
     console.log("[Render] Auth is loading. Showing full-page spinner.");
     return <div className="flex items-center justify-center h-screen"><LoadingSpinner /></div>;
@@ -159,8 +139,6 @@ export default function Dashboard({ children }: { children?: React.ReactNode }) 
 
   if (user === null) {
     console.log("[Render] Auth loaded: User is null. Showing spinner while redirecting...");
-    // Render children directly if needed for login/signup pages (though redirect should handle it)
-    // return children || <div className="flex items-center justify-center h-screen"><LoadingSpinner /></div>;
      return <div className="flex items-center justify-center h-screen"><LoadingSpinner /></div>;
   }
 
@@ -171,36 +149,30 @@ export default function Dashboard({ children }: { children?: React.ReactNode }) 
        : displayGreeting || 'Welcome';
   const initials = !loadingProfile && studentData ? getInitials(studentData.name) : '?';
 
-
-   // Function to render the active section content
    const renderContent = () => {
-    // Show profile loading spinner if profile is still loading after auth
     if (loadingProfile) {
         return <LoadingSpinner />;
     }
-    // Show error if profile loading failed
     if (!studentData) {
         return <div className="p-4 text-center text-red-500">Failed to load profile data. Please try refreshing.</div>;
     }
 
-    // Render the active section component, passing necessary props
     switch (activeSection) {
         case 'home': return <HomePageContent />;
-        // Pass onUpdate callback to UserProfile
         case 'profile': return <UserProfile user={user} studentData={studentData} onUpdate={() => fetchStudentData(true)} />;
         case 'posts': return <PostsFeed setActiveSection={setActiveSection} studentData={studentData} />;
         case 'lost-found': return <LostAndFoundFeed user={user} studentData={studentData} />;
-        case 'events': return <EventsFeed user={user} studentData={studentData} setActiveSection={setActiveSection} />;
+        case 'events': return <EventsFeed user={user} studentData={studentData} />;
+        case 'opportunities': return <OpportunitiesFeed user={user} studentData={studentData} />; // Add Opportunities Feed
         case 'my-posts': return <UserPosts user={user} studentData={studentData} />;
         case 'my-favorites': return <UserFavorites user={user} studentData={studentData} />;
         case 'my-events': return <UserEvents user={user} studentData={studentData} />;
-        case 'create-post': return <CreatePostForm />;
+        // case 'create-post': return <CreatePostForm />; // No longer a separate section
         default:
              console.warn(`[Dashboard Render] Unknown active section: ${activeSection}. Defaulting to home.`);
              return <HomePageContent />;
     }
   };
-
 
   // Ensure structure and syntax are correct before the return statement
   return (
@@ -236,6 +208,11 @@ export default function Dashboard({ children }: { children?: React.ReactNode }) 
                          <FileText /> <span>Notices</span>
                       </SidebarMenuButton>
                  </SidebarMenuItem>
+                  <SidebarMenuItem>
+                      <SidebarMenuButton onClick={() => handleNavigate('opportunities')} isActive={activeSection === 'opportunities'} tooltip="Opportunities">
+                          <Briefcase /> <span>Opportunities</span>
+                      </SidebarMenuButton>
+                   </SidebarMenuItem>
                  <SidebarMenuItem>
                       <SidebarMenuButton onClick={() => handleNavigate('lost-found')} isActive={activeSection === 'lost-found'} tooltip="Lost & Found">
                          <Search /> <span>Lost & Found</span>
@@ -256,7 +233,7 @@ export default function Dashboard({ children }: { children?: React.ReactNode }) 
                     </SidebarMenuItem>
                      <SidebarMenuItem>
                         <SidebarMenuButton onClick={() => handleNavigate('my-favorites')} isActive={activeSection === 'my-favorites'} tooltip="My Favorites">
-                            <Star /> <span>My Pinned Notices</span>
+                            <Star /> <span>Pinned Notices</span>
                         </SidebarMenuButton>
                     </SidebarMenuItem>
                     <SidebarMenuItem>
@@ -288,8 +265,6 @@ export default function Dashboard({ children }: { children?: React.ReactNode }) 
          </header>
         <main className="flex-1 p-4 md:p-6 lg:p-8 overflow-auto">
              {renderContent()}
-              {/* Render children passed from layout only if no specific section is active (or adjust logic) */}
-             {/* {activeSection === 'none' && children} */}
         </main>
       </SidebarInset>
     </SidebarProvider>

@@ -146,3 +146,29 @@ export interface EventRegistration {
   email: string;
   registrationTime: Timestamp;
 }
+
+
+// --- Opportunities ---
+export type OpportunityType = 'Internship' | 'Full-Time' | 'Part-Time' | 'Competition' | 'Scholarship' | 'Other';
+export type OpportunityLocation = 'On-Campus' | 'Off-Campus' | 'Remote';
+
+export interface OpportunityEligibility {
+    branches: string[]; // Empty means all branches
+    yearsOfPassing: number[]; // Empty means all years
+    genders: Gender[]; // Empty means all genders
+}
+
+export interface Opportunity {
+    id: string; // Firestore Document ID
+    title: string;
+    description: string;
+    applyLink: string; // URL to apply
+    deadline: Timestamp; // Application deadline
+    postedBy: string; // UID of the user who posted
+    postedByName: string;
+    postedByScholarNumber: string;
+    createdAt: Timestamp;
+    locationType: OpportunityLocation; // On-Campus, Off-Campus, Remote
+    opportunityType: OpportunityType; // Internship, Full-Time, etc.
+    eligibility: OpportunityEligibility; // Who can see/apply
+}
