@@ -1,3 +1,4 @@
+
 import React, { useState, useRef } from 'react';
 import type { User } from 'firebase/auth';
 import type { StudentProfile } from '@/types';
@@ -10,7 +11,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { uploadResume, updateStudentResumeUrl, deleteResume } from '@/lib/profileActions'; // Import profile actions
-import { Loader2, Upload, FileText, Trash2 } from 'lucide-react'; // Import necessary icons
+import { Loader2, Upload, FileText, Trash2, Sparkles } from 'lucide-react'; // Import necessary icons, added Sparkles
 import {
   AlertDialog,
   AlertDialogAction,
@@ -22,6 +23,9 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
+import { reviewResume } from '@/ai/flows/review-resume-flow'; // Import the Genkit flow
+import type { ReviewResumeOutput } from '@/ai/flows/review-resume-flow'; // Import output type
+import { ResumeReviewDialog } from './ResumeReviewDialog'; // Import the dialog component
 
 interface UserProfileProps {
     user: User | null; // Firebase auth user
@@ -53,6 +57,12 @@ const UserProfile: React.FC<UserProfileProps> = ({ user, studentData, onUpdate }
     const [isDeleting, setIsDeleting] = useState(false); // State for delete operation
     const fileInputRef = useRef<HTMLInputElement>(null);
     const { toast } = useToast();
+
+    // State for Resume Review
+    const [isReviewing, setIsReviewing] = useState(false);
+    const [reviewResult, setReviewResult] = useState<ReviewResumeOutput | null>(null);
+    const [reviewError, setReviewError] = useState<string | null>(null);
+    const [isReviewDialogOpen, setIsReviewDialogOpen] = useState(false);
 
     const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
         const file = event.target.files?.[0];
@@ -125,6 +135,96 @@ const UserProfile: React.FC<UserProfileProps> = ({ user, studentData, onUpdate }
          }
      };
 
+     // --- Resume Review Logic ---
+    const handleReviewResume = async () => {
+        if (!studentData?.resumeUrl) {
+            toast({ variant: "destructive", title: "Review Error", description: "Please upload a resume first." });
+            return;
+        }
+
+        setIsReviewing(true);
+        setReviewResult(null);
+        setReviewError(null);
+        setIsReviewDialogOpen(true); // Open the dialog immediately
+
+        try {
+             console.log("[UserProfile] Fetching resume text for review...");
+             // Fetch the resume PDF content as text (requires a backend or client-side PDF parsing library)
+             // This is a complex step and usually requires a dedicated service or library.
+             // *** Placeholder: Assuming a function `getPdfText` exists ***
+             // You'll need to implement `getPdfText` using a library like pdf-parse (server-side)
+             // or pdf.js (client-side, more complex setup).
+             // For now, we'll simulate fetching text. Replace this with actual implementation.
+
+             // --- !!! IMPORTANT: PDF Text Extraction Placeholder !!! ---
+             // const resumeText = await getPdfText(studentData.resumeUrl); // Replace with actual implementation
+              const resumeText = await fetchResumeTextFromServer(studentData.resumeUrl); // Assume helper function exists
+             // --- End Placeholder ---
+
+              if (!resumeText || resumeText.trim().length < 50) {
+                 throw new Error("Could not extract sufficient text from the resume PDF.");
+              }
+
+             console.log("[UserProfile] Calling reviewResume flow...");
+             const result = await reviewResume({ resumeText });
+             console.log("[UserProfile] Review result received:", result);
+             setReviewResult(result);
+
+             // Handle potential errors returned structurally from the flow
+             if (result.suggestions.includes("error occurred")) {
+                 setReviewError(result.suggestions);
+             }
+
+        } catch (error: any) {
+            console.error("Resume review failed:", error);
+            setReviewError(error.message || "An unexpected error occurred during review.");
+            // Display error toast in addition to showing in dialog
+            toast({ variant: "destructive", title: "Review Failed", description: error.message || "Could not review resume." });
+        } finally {
+            setIsReviewing(false);
+        }
+    };
+
+    // Placeholder function for fetching resume text - NEEDS IMPLEMENTATION
+    // Ideally, this would be a server action or API route that securely fetches the PDF
+    // from the storage URL and uses a library like 'pdf-parse' to extract text.
+    async function fetchResumeTextFromServer(url: string): Promise<string> {
+        console.warn("fetchResumeTextFromServer is a placeholder and needs real implementation.");
+        // Example (conceptual - requires backend):
+        // const response = await fetch('/api/parse-pdf', { method: 'POST', body: JSON.stringify({ url }) });
+        // if (!response.ok) throw new Error("Server error fetching PDF text.");
+        // const data = await response.json();
+        // return data.text;
+
+        // --- TEMPORARY SIMULATION ---
+        // Simulate network delay and return sample text
+        await new Promise(resolve => setTimeout(resolve, 1500));
+        return `
+        John Doe
+        Software Engineer Intern
+        john.doe@email.com | 555-1234 | linkedin.com/in/johndoe
+
+        Summary
+        Highly motivated Computer Science student seeking a challenging software engineering internship. Proficient in Java and Python with experience in web development using React and Node.js. Eager to contribute to innovative projects and learn from experienced professionals.
+
+        Experience
+        Project Contributor, Open Source Project XYZ - GitHub (Jan 2023 - Present)
+        - Developed new features using Python and Django.
+        - Fixed bugs and improved code quality.
+
+        Education
+        IIIT Bhopal - B.Tech Computer Science (Expected Graduation: 2025)
+        - Relevant Coursework: Data Structures, Algorithms, Database Management
+
+        Skills
+        Languages: Java, Python, JavaScript, HTML, CSS
+        Frameworks: React, Node.js, Django
+        Tools: Git, Docker
+        `;
+        // --- END TEMPORARY SIMULATION ---
+    }
+
+
     if (!studentData) {
         // Consider using a more specific loading indicator or null
         return <p>Loading profile data...</p>;
@@ -170,7 +270,7 @@ const UserProfile: React.FC<UserProfileProps> = ({ user, studentData, onUpdate }
                          <h3 className="text-lg font-medium mb-2">Resume</h3>
                          {studentData.resumeUrl ? (
                              <div className="space-y-3">
-                                 <div className="flex items-center justify-between p-3 border rounded-md bg-secondary/50">
+                                 <div className="flex items-center justify-between p-3 border rounded-md bg-secondary/50 flex-wrap gap-2">
                                     <div className="flex items-center gap-2">
                                         <FileText className="h-5 w-5 text-primary" />
                                         <a
@@ -183,9 +283,15 @@ const UserProfile: React.FC<UserProfileProps> = ({ user, studentData, onUpdate }
                                             View Current Resume
                                         </a>
                                      </div>
+                                      {/* Review Button */}
+                                      <Button onClick={handleReviewResume} size="sm" variant="outline" disabled={isReviewing || isUploading || isDeleting} className="ml-auto">
+                                         {isReviewing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Sparkles className="mr-2 h-4 w-4 text-yellow-500" />}
+                                         {isReviewing ? 'Reviewing...' : 'Review My Resume'}
+                                      </Button>
+                                      {/* Delete Button */}
                                      <AlertDialog>
                                          <AlertDialogTrigger asChild>
-                                             <Button variant="destructive" size="sm" disabled={isDeleting} title="Delete Resume">
+                                             <Button variant="destructive" size="icon" className="h-8 w-8" disabled={isDeleting || isReviewing} title="Delete Resume">
                                                   {isDeleting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
                                              </Button>
                                          </AlertDialogTrigger>
@@ -206,12 +312,15 @@ const UserProfile: React.FC<UserProfileProps> = ({ user, studentData, onUpdate }
                                      </AlertDialog>
                                  </div>
                                  {/* PDF Preview (using an iframe) */}
-                                 <div className="aspect-[8.5/11] w-full border rounded-md overflow-hidden">
-                                    <iframe
-                                        src={`${studentData.resumeUrl}#view=fitH`} // Append parameters for better view
+                                 <div className="aspect-[8.5/11] w-full border rounded-md overflow-hidden bg-muted">
+                                     {/* Basic loading state for iframe */}
+                                     <iframe
+                                        src={`${studentData.resumeUrl}#view=fitH&toolbar=0`} // Append parameters for better view, hide toolbar
                                         title="Resume Preview"
-                                        className="w-full h-full"
+                                        className="w-full h-full border-0" // Remove iframe border
                                         // sandbox // Optional: Add sandbox for security if needed, might break some PDFs
+                                        onLoad={(e) => (e.currentTarget.style.opacity = '1')}
+                                        style={{ opacity: 0, transition: 'opacity 0.3s ease-in-out' }} // Fade in
                                     />
                                  </div>
                                  <p className="text-xs text-muted-foreground text-center">Preview of your uploaded resume.</p>
@@ -230,11 +339,11 @@ const UserProfile: React.FC<UserProfileProps> = ({ user, studentData, onUpdate }
                                   onChange={handleFileChange}
                                   ref={fileInputRef}
                                   className="flex-grow text-sm file:mr-4 file:py-1 file:px-3 file:rounded-md file:border file:border-input file:bg-secondary file:text-secondary-foreground hover:file:bg-secondary/80 file:font-medium"
-                                  disabled={isUploading || isDeleting}
+                                  disabled={isUploading || isDeleting || isReviewing}
                               />
                              <Button
                                  onClick={handleUploadResume}
-                                 disabled={!selectedFile || isUploading || isDeleting}
+                                 disabled={!selectedFile || isUploading || isDeleting || isReviewing}
                                  size="sm"
                              >
                                  {isUploading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Upload className="mr-2 h-4 w-4" />}
@@ -248,6 +357,15 @@ const UserProfile: React.FC<UserProfileProps> = ({ user, studentData, onUpdate }
 
                 </CardContent>
             </Card>
+
+            {/* Resume Review Dialog */}
+            <ResumeReviewDialog
+                isOpen={isReviewDialogOpen}
+                onOpenChange={setIsReviewDialogOpen}
+                reviewData={reviewResult}
+                isLoading={isReviewing}
+                error={reviewError}
+            />
         </div>
     );
 };

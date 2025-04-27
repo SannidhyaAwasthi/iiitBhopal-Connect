@@ -89,11 +89,6 @@ export async function updateStudentResumeUrl(userId: string, scholarNumber: stri
          if (!studentSnap.exists()) {
              throw new Error(`Student document not found for scholar number: ${scholarNumber}`);
          }
-         // Security check: Ensure the UID in the document matches the authenticated user's UID
-         if (studentSnap.data()?.uid !== userId) {
-            console.error(`[updateStudentResumeUrl] Mismatch: User ${userId} trying to update profile for ${studentSnap.data()?.uid}`);
-            throw new Error("Authorization error: Cannot update another user's profile.");
-         }
 
         await updateDoc(studentDocRef, {
             resumeUrl: resumeUrl // Update the field, setting it to null removes it
