@@ -15,8 +15,8 @@ export interface Student {
   programType: 'Undergraduate' | 'Postgraduate';
   yearOfPassing: number;
   specialRoles: string[]; // e.g., ['CR', 'Admin']
-  // Gender is now required during signup
   gender: Gender;
+  resumeUrl?: string | null; // Optional URL for the uploaded resume
 }
 
 // Represents the data stored in 'students-by-uid' collection for quick mapping
@@ -31,7 +31,7 @@ export interface StudentUidMap {
 // Ensures required fields for app functionality are present.
 // Since gender is now required at signup, StudentProfile is identical to Student
 export interface StudentProfile extends Student {
-    // Inherits all fields from Student including the required gender
+    // Inherits all fields from Student including the required gender and optional resumeUrl
 }
 
 
