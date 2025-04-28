@@ -9,6 +9,7 @@ import { useToast } from '@/hooks/use-toast';
 import { deleteOpportunity } from '@/lib/opportunityActions'; // Action for deleting
 import {
   AlertDialog,
+  AlertDialogOverlay,
   AlertDialogAction,
   AlertDialogCancel,
   AlertDialogContent,
@@ -18,6 +19,8 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
+import { Dialog, DialogContent, DialogOverlay } from '@/components/ui/dialog';
+import { EditOpportunityForm } from './EditOpportunityForm';
 import type { User } from 'firebase/auth';
 
 interface OpportunityCardProps {
@@ -33,6 +36,7 @@ interface OpportunityCardProps {
 
 export const OpportunityCard: React.FC<OpportunityCardProps> = ({ opportunity, currentUser, currentStudentProfile, onUpdate, onEdit, onMarkAsApplied, applied, setJd }) => {
     const [isDeleting, setIsDeleting] = React.useState(false);
+    const [isEditing, setIsEditing] = React.useState(false);
     const { toast } = useToast();
 
     const deadlineFormatted = format(opportunity.deadline.toDate(), 'PPpp'); // e.g., Aug 15, 2024, 11:59 PM
@@ -57,7 +61,7 @@ export const OpportunityCard: React.FC<OpportunityCardProps> = ({ opportunity, c
 
     const handleEditClick = () => {
         if (isOwner) {
-            onEdit(opportunity);
+            setIsEditing(true);
         }
     };
 
@@ -80,6 +84,11 @@ export const OpportunityCard: React.FC<OpportunityCardProps> = ({ opportunity, c
 
 
     return (
+        <>
+        <Dialog open={isEditing} onOpenChange={setIsEditing}>
+            <DialogContent><EditOpportunityForm opportunity={opportunity} close={() => setIsEditing(false)}/></DialogContent>
+        </Dialog>
+        <>
         <Card className="flex flex-col h-full shadow-sm hover:shadow-md transition-shadow duration-200">
             <CardHeader>
                 <div className="flex justify-between items-start gap-2">
@@ -121,21 +130,23 @@ export const OpportunityCard: React.FC<OpportunityCardProps> = ({ opportunity, c
                      </a>
                  </Button>
                  {isOwner ? (
-                    <div className="flex gap-2 justify-end mt-2 sm:mt-0 w-full sm:w-auto">
+                    <div className="flex flex-col gap-2 justify-end mt-2 sm:mt-0 w-full sm:w-auto">
                         {/* Edit Button */}
                         <Button variant="outline" size="sm" onClick={handleEditClick} disabled={isDeleting} title="Edit Opportunity">
                              <Edit className="h-4 w-4 mr-1 sm:mr-0 md:mr-1" />
                              <span className="hidden md:inline">Edit</span>
                         </Button>
                         {/* Delete Button */}
-                        <AlertDialog>
-                             <AlertDialogTrigger asChild>
-                                 <Button variant="destructive" size="sm" disabled={isDeleting} title="Delete Opportunity">
-                                     {isDeleting ? <Loader2 className="h-4 w-4 animate-spin mr-1 sm:mr-0 md:mr-1" /> : <Trash2 className="h-4 w-4 mr-1 sm:mr-0 md:mr-1" />}
-                                     <span className="hidden md:inline">Delete</span>
-                                 </Button>
-                             </AlertDialogTrigger>
-                             <AlertDialogContent>
+                        <AlertDialog className="w-full">
+                            <div className="w-full">
+                                <AlertDialogTrigger asChild>
+                                    <Button variant="destructive" size="sm" className="w-full" disabled={isDeleting} title="Delete Opportunity">
+                                        {isDeleting ? <Loader2 className="h-4 w-4 animate-spin mr-1 sm:mr-0 md:mr-1" /> : <Trash2 className="h-4 w-4 mr-1 sm:mr-0 md:mr-1" />}
+                                        <span className="hidden md:inline">Delete</span>
+                                    </Button>
+                                </AlertDialogTrigger>
+                            </div>
+                            <AlertDialogContent>
                                  <AlertDialogHeader>
                                      <AlertDialogTitle>Delete Opportunity?</AlertDialogTitle>
                                      <AlertDialogDescription>
@@ -158,5 +169,7 @@ export const OpportunityCard: React.FC<OpportunityCardProps> = ({ opportunity, c
                      )}
             </CardFooter>
         </Card>
+        </>
+        </>
     );
 };
