@@ -1,3 +1,4 @@
+
 import { useState } from "react";
 import {
   Form,
@@ -35,6 +36,7 @@ import { useToast } from "@/hooks/use-toast";
 import { Loader2 } from "lucide-react";
 import { Checkbox } from "./ui/checkbox";
 import type { OpportunityEligibility, Gender } from "@/types"; // Import necessary types
+import { Label } from "@/components/ui/label"; // Import Label component
 
 // Define available options (reuse or centralize if needed)
 const AVAILABLE_BRANCHES = ['CSE', 'IT', 'ECE'];
