@@ -23,6 +23,7 @@ import UserFavorites from './user-favorites';
 import UserEvents from './user-events';
 import HomePageContent from '../app/home/page'; // Assuming this path is correct
 import { OpportunitiesFeed } from './OpportunitiesFeed'; // Import OpportunitiesFeed
+import UserApplications from './UserApplications';
 
 // --- Utility Functions ---
 const getGreeting = () => {
@@ -167,6 +168,7 @@ export function Dashboard({ children }: { children?: React.ReactNode }) { // Exp
         case 'my-posts': return <UserPosts user={user} studentData={studentData} />;
         case 'my-favorites': return <UserFavorites user={user} studentData={studentData} />;
         case 'my-events': return <UserEvents user={user} studentData={studentData} />;
+        case 'my-applications': return <UserApplications user={user} studentData={studentData} />
         // case 'create-post': return <CreatePostForm />; // No longer a separate section
         default:
              console.warn(`[Dashboard Render] Unknown active section: ${activeSection}. Defaulting to home.`);
@@ -241,6 +243,11 @@ export function Dashboard({ children }: { children?: React.ReactNode }) { // Exp
                             <CalendarCheck /> <span>My Events</span>
                         </SidebarMenuButton>
                     </SidebarMenuItem>
+                         <SidebarMenuItem>
+                             <SidebarMenuButton onClick={() => handleNavigate('my-applications')} isActive={activeSection === 'my-applications'} tooltip="My Applications">
+                                 <Briefcase /> <span>My Applications</span>
+                             </SidebarMenuButton>
+                         </SidebarMenuItem>
                   </>
              </SidebarMenu>
         </SidebarContent>

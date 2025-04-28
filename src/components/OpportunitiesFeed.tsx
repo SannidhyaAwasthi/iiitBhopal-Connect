@@ -9,7 +9,17 @@ import { OpportunityCard } from './OpportunityCard';
 import { CreateOpportunityForm } from './CreateOpportunityForm'; // Import the creation form
 import { useToast } from '@/hooks/use-toast';
 import { Alert, AlertDescription } from "@/components/ui/alert";
-// import { EditOpportunityForm } from './EditOpportunityForm'; // Import edit form (create later)
+import {
+    Dialog,
+    DialogContent,
+    DialogHeader,
+    DialogTitle,
+    DialogDescription,
+    DialogFooter,
+    DialogClose,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+
 
 interface OpportunitiesFeedProps {
     user: User | null;
@@ -21,9 +31,10 @@ export const OpportunitiesFeed: React.FC<OpportunitiesFeedProps> = ({ user, stud
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
     const [isCreateOpportunityOpen, setIsCreateOpportunityOpen] = useState(false);
-    // const [selectedOpportunityForEdit, setSelectedOpportunityForEdit] = useState<Opportunity | null>(null);
-    // const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
+    const [appliedOpportunities, setAppliedOpportunities] = useState<string[]>([]); // Track which opportunities the user has marked as applied
     const { toast } = useToast();
+    const [jd, setJd] = useState('');
+    const [isOpenJD, setIsOpenJD] = useState(false); // Track open JD
 
     const loadOpportunities = useCallback(async () => {
         setLoading(true);
@@ -59,18 +70,10 @@ export const OpportunitiesFeed: React.FC<OpportunitiesFeedProps> = ({ user, stud
         loadOpportunities(); // Refresh list after successful creation
     };
 
-     const handleEdit = (opportunity: Opportunity) => {
-         // setSelectedOpportunityForEdit(opportunity);
-         // setIsEditDialogOpen(true);
-          toast({ title: "Edit Clicked", description: "Edit functionality pending." });
+     const handleMarkAsApplied = (opportunityId: string) => {
+         setAppliedOpportunities([...appliedOpportunities, opportunityId]);
+         toast({ title: "Marked as Applied!", description: "This opportunity has been added to your applications." });
      };
-
-    const handleEditSuccess = () => {
-         // setIsEditDialogOpen(false);
-         // setSelectedOpportunityForEdit(null);
-         loadOpportunities(); // Refresh the list after successful edit
-     };
-
 
     const canCreate = user && studentData; // User must be logged in and profile loaded
 
@@ -112,8 +115,9 @@ export const OpportunitiesFeed: React.FC<OpportunitiesFeedProps> = ({ user, stud
                             opportunity={opp}
                             currentUser={user}
                             currentStudentProfile={studentData}
-                            onUpdate={loadOpportunities} // Pass refresh function
-                            onEdit={handleEdit} // Pass edit function
+                            onMarkAsApplied={() => handleMarkAsApplied(opp.id)} // Pass the ID
+                            applied={appliedOpportunities.includes(opp.id)} // Pass applied state
+                            setJd={() => { setJd(opp.description || ''); setIsOpenJD(true) }}
                         />
                     ))}
                 </div>
@@ -127,14 +131,14 @@ export const OpportunitiesFeed: React.FC<OpportunitiesFeedProps> = ({ user, stud
                  onSuccess={handleCreateSuccess}
              />
 
-             {/* {selectedOpportunityForEdit && (
-                 <EditOpportunityForm
-                     opportunity={selectedOpportunityForEdit}
-                     isOpen={isEditDialogOpen}
-                     onOpenChange={setIsEditDialogOpen}
-                     onSuccess={handleEditSuccess}
-                 />
-             )} */}
+             <Dialog open={isOpenJD} onOpenChange={setIsOpenJD}>
+                 <DialogContent>
+                     <DialogHeader>
+                         <DialogTitle> Job Description </DialogTitle>
+                     </DialogHeader>
+                     <p>{jd}</p>
+                 </DialogContent>
+             </Dialog>
         </div>
     );
 };

@@ -26,9 +26,12 @@ interface OpportunityCardProps {
     currentStudentProfile: StudentProfile | null;
     onUpdate: () => void; // Callback to refresh list after deletion
     onEdit: (opportunity: Opportunity) => void; // Callback to trigger editing
+    onMarkAsApplied: () => void;
+    applied: boolean;
+    setJd: () => void;
 }
 
-export const OpportunityCard: React.FC<OpportunityCardProps> = ({ opportunity, currentUser, currentStudentProfile, onUpdate, onEdit }) => {
+export const OpportunityCard: React.FC<OpportunityCardProps> = ({ opportunity, currentUser, currentStudentProfile, onUpdate, onEdit, onMarkAsApplied, applied, setJd }) => {
     const [isDeleting, setIsDeleting] = React.useState(false);
     const { toast } = useToast();
 
@@ -109,12 +112,15 @@ export const OpportunityCard: React.FC<OpportunityCardProps> = ({ opportunity, c
                  </div>
             </CardContent>
             <CardFooter className="border-t pt-4 flex flex-col sm:flex-row justify-between items-stretch sm:items-center gap-2">
-                 <Button asChild variant="default" size="sm" className="w-full sm:w-auto">
+                 <Button variant="default" size="sm" className="w-full sm:w-auto" onClick={setJd}>
+                         View Full JD
+                 </Button>
+                <Button asChild variant="default" size="sm" className="w-full sm:w-auto">
                      <a href={opportunity.applyLink} target="_blank" rel="noopener noreferrer">
                          Apply Now <ExternalLink className="ml-2 h-4 w-4" />
                      </a>
                  </Button>
-                 {isOwner && (
+                 {isOwner ? (
                     <div className="flex gap-2 justify-end mt-2 sm:mt-0 w-full sm:w-auto">
                         {/* Edit Button */}
                         <Button variant="outline" size="sm" onClick={handleEditClick} disabled={isDeleting} title="Edit Opportunity">
@@ -145,7 +151,11 @@ export const OpportunityCard: React.FC<OpportunityCardProps> = ({ opportunity, c
                              </AlertDialogContent>
                          </AlertDialog>
                      </div>
-                 )}
+                 ) : (
+                          <Button variant="secondary" size="sm" className="w-full sm:w-auto" onClick={onMarkAsApplied} disabled={applied}>
+                              {applied ? "Marked Applied" : "Mark as Applied"}
+                          </Button>
+                     )}
             </CardFooter>
         </Card>
     );
