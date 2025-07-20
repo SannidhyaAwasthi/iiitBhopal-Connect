@@ -1,6 +1,9 @@
 # IIIT Bhopal Connect
 
 This is a Next.js application designed for the students of IIIT Bhopal.
+## Contributors
+- [Sannidhya Awasthi](https://github.com/SannidhyaAwasthi)
+- [Aish Soni](https://github.com/AishSoni)
 
 ## Getting Started
 
